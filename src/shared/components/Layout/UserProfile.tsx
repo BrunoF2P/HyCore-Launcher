@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Github, AlertCircle, Check, X, Pencil } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 
 export const UserProfile = () => {
     const { t } = useTranslation();
@@ -10,6 +11,7 @@ export const UserProfile = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [appVersion, setAppVersion] = useState("...");
 
     useEffect(() => {
         // Load player name on mount
@@ -17,6 +19,9 @@ export const UserProfile = () => {
             setPlayerName(name);
             setEditValue(name);
         });
+
+        // Get app version
+        getVersion().then(setAppVersion).catch(console.error);
     }, []);
 
     const handleSave = async () => {
@@ -97,7 +102,7 @@ export const UserProfile = () => {
                         </span>
                     </div>
                 )}
-                <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">{t('footer.version')} 0.1.0</div>
+                <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">{t('footer.version')} {appVersion}</div>
             </div>
             <div className="flex gap-5 ml-10">
                 <span
