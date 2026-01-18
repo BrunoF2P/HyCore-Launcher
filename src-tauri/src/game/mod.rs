@@ -50,10 +50,19 @@ pub async fn launch_game(window: tauri::Window) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
+        // Filter out AppImage mount paths from LD_LIBRARY_PATH to prevent library conflicts
         if let Some(path) = std::env::var_os("LD_LIBRARY_PATH") {
+            let path_str = path.to_string_lossy();
+            let filtered_paths: Vec<&str> = path_str
+                .split(':')
+                .filter(|p| !p.contains("/.mount_") && !p.contains("/tmp/.mount"))
+                .collect();
+
             let mut new_path = std::ffi::OsString::from(&client_dir);
-            new_path.push(":");
-            new_path.push(path);
+            if !filtered_paths.is_empty() {
+                new_path.push(":");
+                new_path.push(filtered_paths.join(":"));
+            }
             cmd.env("LD_LIBRARY_PATH", new_path);
         } else {
             cmd.env("LD_LIBRARY_PATH", &client_dir);
