@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "notes": "Update generated via script.",
+  "pub_date": "2026-01-18T08:12:20.904Z",
+  "platforms": {
+    "linux-x86_64": {
+      "signature": "SIGNATURE_NOT_FOUND_PLEASE_SIGN_MANUALLY",
+      "url": "https://github.com/vince-fn/HyCore-Launcher/releases/download/v0.1.0/HyCore_0.1.0_amd64.deb"
+    }
+  }
+}
