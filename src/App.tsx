@@ -1,50 +1,53 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
+import { useState, useEffect } from "react";
+
+import { ActionBar } from "./shared/components/Layout/ActionBar";
+import { ManagementMenu } from "./features/game/components/ManagementMenu";
+import { NewsSection } from "./features/news/components/NewsSection";
+import { UpdateOverlay } from "./features/game/components/UpdateOverlay";
+import { useGameStore } from "./features/game/store/useGameStore";
+import { ModsPage } from "./features/mods";
+import { useLauncherStore } from "./features/system/store/useLauncherStore";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [view, setView] = useState<'dashboard' | 'mods'>('dashboard');
+  const checkForUpdates = useGameStore((state) => state.checkForUpdates);
+  const checkSelfUpdate = useLauncherStore((state) => state.checkSelfUpdate);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    checkForUpdates();
+    checkSelfUpdate();
+  }, []);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div
+      className="bg-cover bg-center w-screen h-screen flex flex-col relative antialiased font-sans bg-black text-white overflow-hidden"
+      style={{ backgroundImage: "url('/content-upper-new-3840.jpg')" }}
+    >
+      <UpdateOverlay />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none"></div>
 
-      <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      {view === 'dashboard' ? (
+        <>
+          <main className="flex-1 min-h-0 flex flex-row px-10 pb-10 pt-32 z-10 overflow-visible items-center">
+            <ManagementMenu onOpenMods={() => setView('mods')} />
+            <div className="relative flex flex-col gap-5 ml-10">
+              <img
+                src="/logo.png"
+                alt="Hytale Logo"
+                className="h-24 drop-shadow-xl absolute bottom-full left-0 mb-6"
+              />
+              <NewsSection />
+            </div>
+          </main>
+          <ActionBar />
+        </>
+      ) : (
+        <div className="absolute inset-0 z-20 bg-[#121418]">
+          <ModsPage onBack={() => setView('dashboard')} />
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1,0 +1,91 @@
+{
+    "management": {
+        "mods": "Mods",
+        "folder": "Folder",
+        "clear": "Clear",
+        "remove": "Remove",
+        "confirm_clear": "Are you sure you want to clear data? This will remove settings, saved accounts, and user files.",
+        "confirm_uninstall": "Are you sure you want to uninstall? This will permanently delete the game folder and Java runtime.",
+        "uninstall_success": "HyCore has been successfully uninstalled.",
+        "profile": "Profile",
+        "change_name": "Change Name",
+        "enter_name": "Enter your new username:"
+    },
+    "mods": {
+        "title": "Mods",
+        "library": "Library",
+        "browse": "Browse CurseForge",
+        "search_placeholder": "Search mods...",
+        "filters": "Filters",
+        "load_more": "Load More",
+        "no_results": "No mods found.",
+        "no_results_desc": "Try adjusting your search terms.",
+        "no_installed": "No Mods Installed",
+        "no_installed_desc": "Visit the Browse tab to discover and install mods for Hytale.",
+        "installed": "Installed Mods",
+        "install": "Install",
+        "installed_btn": "Installed",
+        "installing": "Installing...",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "sort": {
+            "by": "Sort By",
+            "order": "Sort Order",
+            "featured": "Featured",
+            "popularity": "Popularity",
+            "last_updated": "Last Updated",
+            "total_downloads": "Total Downloads",
+            "name": "Name",
+            "author": "Author",
+            "asc": "Ascending",
+            "desc": "Descending"
+        },
+        "confirm_uninstall": "Are you sure you want to uninstall {{name}}?",
+        "by": "by"
+    },
+    "news": {
+        "latest_updates": "Latest Updates",
+        "welcome_msg": "Welcome to the Hytale Launcher. Explore the Orbis system and start your adventure today!",
+        "patch_notes": "Patch Notes v0.1.0",
+        "patch_msg": "Added new biome generators and optimized world loading speeds.",
+        "loading": "Fetching latest news...",
+        "no_internet": "Could not connect to Hytale. Showing latest cached news."
+    },
+    "footer": {
+        "user": "Adventurer",
+        "version": "Version",
+        "launch": "Start Game",
+        "launching": "Launching...",
+        "checking": "Checking...",
+        "update": "Update Game",
+        "launch_error": "Failed to launch game"
+    },
+    "update": {
+        "title": "Updating Hytale",
+        "preparing": "Preparing system check...",
+        "complete": "Update Complete",
+        "error": "Update Error",
+        "error_desc": "An unexpected error occurred while patching the game. Please check your connection and try again.",
+        "downloading": "Downloading",
+        "requirements_fail": "System requirements not met. Please check your internet and disk space (10GB+).",
+        "stages": {
+            "checking": "Checking Requirements",
+            "butler": "Preparing Tools",
+            "download": "Downloading Patch",
+            "install": "Applying Update",
+            "done": "Update Ready"
+        }
+    },
+    "common": {
+        "continue": "Continue",
+        "close": "Close"
+    },
+    "tooltips": {
+        "control_mods": "Control Mods",
+        "open_folder": "Go to Folder",
+        "clear_data": "Clear Data",
+        "uninstall": "Uninstall",
+        "github": "GitHub Repository",
+        "report_issue": "Report Issue"
+    }
+}
