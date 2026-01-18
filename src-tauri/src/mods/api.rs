@@ -1,6 +1,6 @@
 use super::types::{CurseForgeMod, CurseForgeResponse, ModFile, SearchResult};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
-use reqwest::Client;
+use reqwest::{Client, Url};
 use std::time::Duration;
 
 const CURSE_FORGE_BASE_URL: &str = "https://api.curseforge.com/v1";
@@ -58,19 +58,22 @@ pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, Strin
         query_params.push(("index", idx.to_string()));
     }
 
+    let final_url = Url::parse_with_params(&url, &query_params).map_err(|e| e.to_string())?;
+
     let resp = client
-        .get(&url)
-        .query(&query_params)
+        .get(final_url)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e: reqwest::Error| e.to_string())?;
 
     if !resp.status().is_success() {
         return Err(format!("CurseForge API error: {}", resp.status()));
     }
 
-    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> =
-        resp.json().await.map_err(|e| e.to_string())?;
+    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> = resp
+        .json()
+        .await
+        .map_err(|e: reqwest::Error| e.to_string())?;
 
     let total_count = cf_resp
         .pagination
