@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HyCore",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.hycore.launcher",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -15,7 +15,7 @@
         "https://github.com/BrunoF2P/hycore/releases/latest/download/latest.json"
       ],
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIzRkIwRUEzRUU1MkZGOUIKUldTYi8xTHVvdzc3STM4cE5DeWNFbTIraGFtMlFlSkl3V0wwd2FtaDBhcHM0cjJ5RUF4aDdUS1YK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJENDFBODJFQzk0QUFCNTEKUldSUnEwckpMcWhCdlNGY1c1cUYrbjB3SEpRQlI4TWl4bHhNcHhaWityR0E5MGRraEV6VDRuVWkK"
     }
   },
   "app": {
@@ -44,7 +44,9 @@
       "deb",
       "appimage",
       "nsis",
-      "msi"
+      "msi",
+      "dmg",
+      "app"
     ],
     "icon": [
       "icons/32x32.png",
