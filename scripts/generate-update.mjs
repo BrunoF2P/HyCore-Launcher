@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 // Configuration
-const REPO_URL = "https://github.com/vince-fn/HyCore-Launcher";
+const REPO_URL = "https://github.com/BrunoF2P/hycore";
 const TAURI_CONF_PATH = path.join(process.cwd(), 'src-tauri', 'tauri.conf.json');
 const RELEASE_DIR = path.join(process.cwd(), 'src-tauri', 'target', 'release', 'bundle');
 
