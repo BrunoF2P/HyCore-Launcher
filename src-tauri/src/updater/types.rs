@@ -13,3 +13,11 @@ pub struct SystemRequirements {
     pub free_space_gb: u64,
     pub meets_requirements: bool,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct LocalVersionInfo {
+    pub version: u32,
+    pub size: Option<u64>,
+    pub last_modified: Option<String>,
+    pub etag: Option<String>,
+}
