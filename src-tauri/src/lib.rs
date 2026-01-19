@@ -5,6 +5,9 @@ mod player;
 mod system;
 mod updater;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tauri::command]
 async fn get_news() -> Result<Vec<news::NewsItem>, String> {
     match news::fetch_news().await {
@@ -67,6 +70,59 @@ async fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::menu::{Menu, MenuItem};
+            use tauri::tray::TrayIconBuilder;
+            use tauri::Manager;
+
+            let show_i = MenuItem::with_id(app, "show", "Exibir Launcher", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false) // Better to toggle on click, menu on right click
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            if is_visible {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -86,9 +142,17 @@ pub fn run() {
             install_mod_cf,
             remove_mod,
             toggle_mod,
+            mods::api::get_categories,
+            mods::manager::get_active_profile,
+            mods::manager::set_active_profile,
+            mods::manager::list_profiles,
+            mods::manager::create_profile,
+            mods::manager::delete_profile,
+            mods::manager::check_mods_updates,
             system::open_game_folder,
+            system::open_url,
             system::wipe_game_data,
-            system::uninstall_game
+            system::uninstall_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

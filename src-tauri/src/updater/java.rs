@@ -34,7 +34,6 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
     let java_path = get_java_bin_path();
 
     if java_path.exists() {
-        // Quick verify
         if let Ok(metadata) = fs::metadata(&java_path) {
             if metadata.len() > 0 {
                 return Ok(java_path);
@@ -58,7 +57,6 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
     }
     fs::create_dir_all(&jre_dir).map_err(|e| e.to_string())?;
 
-    // Determine platform
     let os = if cfg!(target_os = "windows") {
         "windows"
     } else if cfg!(target_os = "macos") {
@@ -75,8 +73,6 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
         return Err("Unsupported architecture".to_string());
     };
 
-    // Construct Adoptium URL directly
-    // Using binary/latest/{version}/ga/{os}/{arch}/jre/hotspot/normal/eclipse?project=jdk
     let url = format!(
         "https://api.adoptium.net/v3/binary/latest/{}/ga/{}/{}/jre/hotspot/normal/eclipse?project=jdk",
         JRE_VERSION, os, arch
@@ -104,10 +100,8 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
 
     extract_jre(&archive_path, &jre_dir).await?;
 
-    // Cleanup
     let _ = fs::remove_file(archive_path);
 
-    // Verify
     if !java_path.exists() {
         return Err("Java executable not found after extraction".to_string());
     }
@@ -142,22 +136,16 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
     if archive_path.extension().unwrap_or_default() == "zip" {
         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
 
-        // JRE archives often have a top-level directory e.g., "jdk-25+xx-jre/"
-        // We want to flatten this effectively or just extract and then move.
-        // For simplicity, let's extract all.
-
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
 
-            // Skip if it's a directory
             if file.name().ends_with('/') {
                 continue;
             }
 
-            // Strip the top level directory if present
             let path = file.enclosed_name().ok_or("Invalid file path in zip")?;
             let mut components = path.components();
-            components.next(); // Skip root folder
+            components.next();
 
             let outpath = dest.join(components.as_path());
 
@@ -169,7 +157,6 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
             std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
         }
     } else {
-        // tar.gz
         use flate2::read::GzDecoder;
         use tar::Archive;
 
@@ -180,9 +167,8 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
             let mut entry = entry.map_err(|e| e.to_string())?;
             let path = entry.path().map_err(|e| e.to_string())?;
 
-            // Strip top level directory
             let mut components = path.components();
-            components.next(); // Skip root folder (e.g. jdk-21.0.1-jre)
+            components.next();
 
             let outpath = dest.join(components.as_path());
 
@@ -194,27 +180,29 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
         }
     }
 
-    // On macOS, the structure might be different (contents/home), handle normalization if needed.
-    // Adoptium logic:
-    // Linux/Windows: jdk-xx-jre/bin/java
-    // macOS: jdk-xx-jre/Contents/Home/bin/java
-    // With strip component logic above:
-    // Linux/Windows: /bin/java (Correct)
-    // macOS: Contents/Home/bin/java (Need to handle deep structure?)
+    let mac_home = dest.join("Contents").join("Home");
+    if mac_home.exists() {
+        log_error("macOS JRE structure detected, normalizing...");
 
-    // Check if bin exists in dest, otherwise search for it
-    if !dest.join("bin").exists() {
-        // Use a walker to find bin directory?
-        // For now, let's assume the strip logic works for Linux/Windows which is user's immediate concern.
-        // If macOS structure remains nested (Contents/Home), we might need extra logic.
+        // List all files in mac_home and move them to dest
+        let entries = fs::read_dir(&mac_home).map_err(|e| e.to_string())?;
+        for entry in entries {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let target_path = dest.join(entry.file_name());
 
-        // Simple fix for macOS if needed:
-        let mac_home = dest.join("Contents").join("Home");
-        if mac_home.exists() {
-            // Move contents of Home to dest
-            // This is complex to implement robustly in one go.
-            // Letting it fail if logic is wrong is better than deleting random things.
+            // If target exists (rare, but just in case), remove it
+            if target_path.exists() {
+                if target_path.is_dir() {
+                    let _ = fs::remove_dir_all(&target_path);
+                } else {
+                    let _ = fs::remove_file(&target_path);
+                }
+            }
+
+            fs::rename(entry.path(), target_path).map_err(|e| e.to_string())?;
         }
+
+        let _ = fs::remove_dir_all(dest.join("Contents"));
     }
 
     Ok(())
