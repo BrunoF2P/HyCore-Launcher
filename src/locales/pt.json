@@ -9,7 +9,9 @@
         "uninstall_success": "HyCore foi desinstalado com sucesso.",
         "profile": "Perfil",
         "change_name": "Alterar Nome",
-        "enter_name": "Digite seu novo nome de usuário:"
+        "enter_name": "Digite seu novo nome de usuário:",
+        "uninstall_failed": "Falha ao desinstalar o jogo",
+        "click_to_edit": "Clique para editar"
     },
     "mods": {
         "title": "Mods",
@@ -41,7 +43,12 @@
             "desc": "Decrescente"
         },
         "confirm_uninstall": "Tem certeza que deseja desinstalar {{name}}?",
-        "by": "por"
+        "by": "por",
+        "no_icon": "Sem Ícone",
+        "install_failed": "Falha ao instalar mod",
+        "remove_failed": "Falha ao remover mod",
+        "toggle_failed": "Falha ao alterar estado do mod",
+        "active_profile": "Perfil Ativo"
     },
     "news": {
         "latest_updates": "Últimas Atualizações",
@@ -78,7 +85,10 @@
     },
     "common": {
         "continue": "Continuar",
-        "close": "Fechar"
+        "close": "Fechar",
+        "save": "Salvar",
+        "cancel": "Cancelar",
+        "logo_alt": "Logo do Hytale"
     },
     "tooltips": {
         "control_mods": "Controlar Mods",
