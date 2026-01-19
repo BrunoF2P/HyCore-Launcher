@@ -20,11 +20,7 @@ pub fn get_active_profile() -> String {
     let path = get_active_profile_name_path();
     if path.exists() {
         fs::read_to_string(&path)
-            .map(|s| {
-                let name = s.trim().to_string();
-                log::info!("Active profile loaded: {}", name);
-                name
-            })
+            .map(|s| s.trim().to_string())
             .unwrap_or_else(|e| {
                 log::warn!(
                     "Failed to read active profile file ({}), defaulting to 'Default'",
@@ -33,7 +29,6 @@ pub fn get_active_profile() -> String {
                 "Default".to_string()
             })
     } else {
-        log::info!("No active profile record found, using 'Default'");
         "Default".to_string()
     }
 }
