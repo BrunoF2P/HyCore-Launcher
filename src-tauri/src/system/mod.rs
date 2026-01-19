@@ -2,6 +2,8 @@ use crate::updater::env::{get_game_dir, get_jre_dir, get_user_data_dir};
 use std::fs;
 use std::process::Command;
 
+pub mod info;
+
 #[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
     log::info!("Opening URL: {}", url);

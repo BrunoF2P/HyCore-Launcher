@@ -271,6 +271,7 @@ pub fn run() {
             system::open_url,
             system::wipe_game_data,
             system::uninstall_game,
+            system::info::get_system_ram_gb,
             settings::get_game_settings,
             settings::set_game_settings,
         ])
