@@ -46,9 +46,7 @@
       "appimage",
       "rpm",
       "nsis",
-      "msi",
-      "dmg",
-      "app"
+      "msi"
     ],
     "icon": [
       "icons/32x32.png",
