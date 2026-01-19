@@ -8,16 +8,43 @@ pub fn get_mods_dir() -> PathBuf {
 }
 
 pub fn get_modpacks_dir() -> PathBuf {
-    get_mods_dir().join("Profiles")
+    let path = crate::updater::env::get_hycore_data_dir().join("Profiles");
+
+    // Migration logic (one-time)
+    if !path.exists() {
+        let old_path = crate::updater::env::get_hycore_data_dir()
+            .join("UserData")
+            .join("Mods")
+            .join("Profiles");
+        if old_path.exists() {
+            log::info!("Migrating profiles directory from old location");
+            let _ = fs::rename(&old_path, &path);
+        }
+    }
+
+    path
 }
 
 pub fn get_active_profile_name_path() -> PathBuf {
-    get_mods_dir().join("active_profile.txt")
+    crate::updater::env::get_hycore_data_dir().join("active_profile.txt")
 }
 
 #[tauri::command]
 pub fn get_active_profile() -> String {
     let path = get_active_profile_name_path();
+
+    // Migration logic (one-time)
+    if !path.exists() {
+        let old_path = crate::updater::env::get_hycore_data_dir()
+            .join("UserData")
+            .join("Mods")
+            .join("active_profile.txt");
+        if old_path.exists() {
+            log::info!("Migrating active profile pointer from old location");
+            let _ = fs::rename(&old_path, &path);
+        }
+    }
+
     if path.exists() {
         fs::read_to_string(&path)
             .map(|s| s.trim().to_string())

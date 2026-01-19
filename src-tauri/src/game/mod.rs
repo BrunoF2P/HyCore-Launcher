@@ -54,16 +54,14 @@ pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result
         .arg("--auth-mode")
         .arg("Offline");
 
-    // Add Java RAM arguments if supported by the wrapper or if we're launching via java
-    // For now, we'll try to pass them as common JVM arguments
-    cmd.arg(format!("-Xms{}G", settings.ram_min_gb))
-        .arg(format!("-Xmx{}G", settings.ram_max_gb));
-
+    // Set JVM options via environment variable as the native HytaleClient wrapper
+    // rejects them as direct command line arguments.
+    let mut jvm_options = format!("-Xms{}G -Xmx{}G", settings.ram_min_gb, settings.ram_max_gb);
     if !settings.custom_java_args.is_empty() {
-        for arg in settings.custom_java_args.split_whitespace() {
-            cmd.arg(arg);
-        }
+        jvm_options.push(' ');
+        jvm_options.push_str(&settings.custom_java_args);
     }
+    cmd.env("_JAVA_OPTIONS", jvm_options);
 
     #[cfg(target_os = "linux")]
     {
