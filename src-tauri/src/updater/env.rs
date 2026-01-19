@@ -28,13 +28,3 @@ pub fn get_jre_dir() -> PathBuf {
 pub fn get_butler_dir() -> PathBuf {
     get_hycore_data_dir().join("butler")
 }
-
-pub fn get_java_binary() -> PathBuf {
-    let jre_dir = get_jre_dir();
-
-    #[cfg(target_os = "windows")]
-    return jre_dir.join("bin").join("java.exe");
-
-    #[cfg(not(target_os = "windows"))]
-    return jre_dir.join("bin").join("java");
-}

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::{Emitter, Window};
 
 use super::download::download_with_retry;
-use super::system::log_error;
+use super::env::get_hycore_data_dir;
 use super::types::UpdateStatus;
 
 const JRE_VERSION: &str = "25";
@@ -25,9 +25,11 @@ struct JreConfig {
     download_url: std::collections::HashMap<String, std::collections::HashMap<String, JrePlatform>>,
 }
 
-#[tauri::command]
 pub fn get_java_bin_path() -> PathBuf {
-    super::env::get_java_binary()
+    get_hycore_data_dir()
+        .join("jre")
+        .join("bin")
+        .join(if cfg!(windows) { "java.exe" } else { "java" })
 }
 
 pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
@@ -36,6 +38,7 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
     if java_path.exists() {
         if let Ok(metadata) = fs::metadata(&java_path) {
             if metadata.len() > 0 {
+                log::info!("Java already installed at {:?}", java_path);
                 return Ok(java_path);
             }
         }
@@ -78,7 +81,7 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
         JRE_VERSION, os, arch
     );
 
-    log_error(&format!("Downloading JRE from: {}", url));
+    log::info!("Downloading JRE from: {}", url);
 
     let archive_ext = if cfg!(target_os = "windows") {
         "zip"
@@ -100,6 +103,7 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
 
     extract_jre(&archive_path, &jre_dir).await?;
 
+    log::info!("Extraction complete for JRE");
     let _ = fs::remove_file(archive_path);
 
     if !java_path.exists() {
@@ -129,7 +133,7 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
 }
 
 async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
-    log_error(&format!("Extracting JRE to {:?}", dest));
+    log::info!("Extracting JRE to {:?}", dest);
 
     let file = fs::File::open(archive_path).map_err(|e| e.to_string())?;
 
@@ -182,7 +186,7 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
 
     let mac_home = dest.join("Contents").join("Home");
     if mac_home.exists() {
-        log_error("macOS JRE structure detected, normalizing...");
+        log::info!("macOS JRE structure detected, normalizing...");
 
         // List all files in mac_home and move them to dest
         let entries = fs::read_dir(&mac_home).map_err(|e| e.to_string())?;

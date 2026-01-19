@@ -55,7 +55,6 @@ export const useUpdateStore = create<UpdateState>((set) => {
                 await invoke('start_game_update');
                 set({ isUpdating: false });
             } catch (err) {
-                invoke('log_updater_error', { error: String(err) });
                 set({
                     isUpdating: false,
                     error: String(err),

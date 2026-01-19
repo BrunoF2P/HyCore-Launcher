@@ -40,18 +40,33 @@ struct ApiPost {
 }
 
 pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
+    log::info!("Fetching news from Hytale API...");
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            log::error!("Failed to build HTTP client: {}", err_msg);
+            err_msg
+        })?;
 
     let response = client
         .get("https://hytale.com/api/blog/post/published")
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            log::error!("API request failed: {}", err_msg);
+            err_msg
+        })?;
 
-    let api_posts: Vec<ApiPost> = response.json().await.map_err(|e| e.to_string())?;
+    let api_posts: Vec<ApiPost> = response.json().await.map_err(|e| {
+        let err_msg = e.to_string();
+        log::error!("Failed to parse API response: {}", err_msg);
+        err_msg
+    })?;
+
+    log::info!("Successfully fetched {} posts from API", api_posts.len());
 
     let mut news_items = Vec::new();
 
@@ -99,6 +114,7 @@ pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
     }
 
     if !news_items.is_empty() {
+        log::info!("Saving news to cache...");
         let _ = save_cache(&news_items);
     }
 
@@ -126,15 +142,23 @@ fn save_cache(items: &[NewsItem]) -> Result<(), String> {
     };
 
     let json = serde_json::to_string(&cache).map_err(|e| e.to_string())?;
-    fs::write(get_cache_path(), json).map_err(|e| e.to_string())?;
+    fs::write(get_cache_path(), json).map_err(|e| {
+        let err_msg = e.to_string();
+        log::error!("Failed to write news cache: {}", err_msg);
+        err_msg
+    })?;
     Ok(())
 }
 
 pub fn load_cache() -> Result<Vec<NewsItem>, String> {
     let path = get_cache_path();
     if path.exists() {
+        log::info!("Loading news from cache...");
         let json = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        let cache: NewsCache = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        let cache: NewsCache = serde_json::from_str(&json).map_err(|e| {
+            log::error!("Failed to parse news cache");
+            e.to_string()
+        })?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -143,11 +167,14 @@ pub fn load_cache() -> Result<Vec<NewsItem>, String> {
 
         // Cache valid for 1 hour (3600 seconds)
         if now - cache.timestamp < 3600 {
+            log::info!("News cache is valid ({} items)", cache.items.len());
             Ok(cache.items)
         } else {
+            log::info!("News cache expired");
             Err("Cache expired".to_string())
         }
     } else {
+        log::info!("No news cache found");
         Err("No cache found".to_string())
     }
 }

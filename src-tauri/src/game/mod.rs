@@ -33,8 +33,8 @@ pub async fn launch_game(window: tauri::Window) -> Result<(), String> {
         return Err("Game executable not found. Please update the game.".to_string());
     }
 
-    crate::updater::system::log_error(&format!("Launching game: {:?}", executable));
-    crate::updater::system::log_error(&format!("Player: {}", player_name));
+    log::info!("Launching game: {:?}", executable);
+    log::info!("Player: {}", player_name);
 
     let mut cmd = Command::new(&executable);
     cmd.arg("--app-dir")
@@ -83,16 +83,16 @@ pub async fn launch_game(window: tauri::Window) -> Result<(), String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    crate::updater::system::log_error(&format!("Executing command: {:?}", cmd));
+    log::info!("Executing command: {:?}", cmd);
     eprintln!("DEBUG LAUNCH ARGS: {:?}", cmd);
 
     cmd.arg("--java-exec").arg(java_exec);
 
-    crate::updater::system::log_error(&format!("Launching with Java: {:?}", cmd));
+    log::info!("Launching with Java: {:?}", cmd);
 
     cmd.spawn()
         .map_err(|e| format!("Failed to launch game: {}", e))?;
 
-    crate::updater::system::log_error("Game launched successfully");
+    log::info!("Game launched successfully");
     Ok(())
 }

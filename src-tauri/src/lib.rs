@@ -10,42 +10,90 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tauri::command]
 async fn get_news() -> Result<Vec<news::NewsItem>, String> {
+    log::info!("Fetching news...");
     match news::fetch_news().await {
-        Ok(items) => Ok(items),
-        Err(_) => news::load_cache(),
+        Ok(items) => {
+            log::info!("News fetched successfully ({} items)", items.len());
+            Ok(items)
+        }
+        Err(e) => {
+            log::warn!("Failed to fetch news from server, loading cache: {}", e);
+            news::load_cache()
+        }
     }
 }
 
 #[tauri::command]
 async fn check_update_requirements() -> Result<updater::SystemRequirements, String> {
-    Ok(updater::check_system_requirements().await)
+    log::info!("Checking update requirements...");
+    let reqs = updater::check_system_requirements().await;
+    log::info!(
+        "Requirements checked: meets_requirements={}",
+        reqs.meets_requirements
+    );
+    Ok(reqs)
 }
 
 #[tauri::command]
 async fn check_for_game_update() -> Result<(bool, u32), String> {
-    updater::is_update_available().await
+    log::info!("Checking for game update...");
+    match updater::is_update_available().await {
+        Ok(res) => {
+            log::info!("Game update check: available={}, version={}", res.0, res.1);
+            Ok(res)
+        }
+        Err(e) => {
+            log::error!("Failed to check for game update: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
 async fn start_game_update(window: tauri::Window) -> Result<(), String> {
-    updater::run_update(window).await
-}
-
-#[tauri::command]
-async fn log_updater_error(error: String) {
-    updater::log_error(&error);
+    log::info!("Starting game update process...");
+    match updater::run_update(window).await {
+        Ok(_) => {
+            log::info!("Game update process finished successfully");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Game update process failed: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
 async fn search_mods_cf(
     params: mods::api::SearchModsParams,
 ) -> Result<mods::types::SearchResult, String> {
-    mods::api::search_mods(params).await
+    log::info!("Searching mods with params: {:?}", params);
+    match mods::api::search_mods(params).await {
+        Ok(res) => {
+            log::info!("Mod search returned {} results", res.mods.len());
+            Ok(res)
+        }
+        Err(e) => {
+            log::error!("Mod search failed: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
 async fn get_installed_mods() -> Result<Vec<mods::types::Mod>, String> {
-    mods::manager::get_installed_mods()
+    log::info!("Fetching installed mods...");
+    match mods::operations::get_installed_mods() {
+        Ok(mods_list) => {
+            log::info!("Found {} installed mods", mods_list.len());
+            Ok(mods_list)
+        }
+        Err(e) => {
+            log::error!("Failed to fetch installed mods: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
@@ -54,17 +102,53 @@ async fn install_mod_cf(
     mod_id: i32,
     file_id: Option<i32>,
 ) -> Result<(), String> {
-    mods::manager::install_mod_by_id(window, mod_id, file_id).await
+    log::info!("Installing mod_id: {:?}, file_id: {:?}", mod_id, file_id);
+    match mods::operations::install_mod_by_id(window, mod_id, file_id).await {
+        Ok(_) => {
+            log::info!("Mod installed successfully");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to install mod: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
 async fn remove_mod(mod_id: String) -> Result<(), String> {
-    mods::manager::remove_mod(mod_id)
+    log::info!("Removing mod: {}", mod_id);
+    match mods::operations::remove_mod(mod_id) {
+        Ok(_) => {
+            log::info!("Mod removed successfully");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to remove mod: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
 async fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), String> {
-    mods::manager::toggle_mod(mod_id, enabled)
+    log::info!("Toggling mod {} (enabled={})", mod_id, enabled);
+    match mods::operations::toggle_mod(mod_id, enabled) {
+        Ok(_) => {
+            log::info!("Mod toggled successfully");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to toggle mod: {}", e);
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+async fn java_bin_path_command() -> std::path::PathBuf {
+    log::info!("Frontend requested Java binary path");
+    updater::java::get_java_bin_path()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -74,6 +158,22 @@ pub fn run() {
         .setup(|app| {
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::TrayIconBuilder;
+
+            // Initialize logging
+            let _ = app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .targets([
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                            file_name: Some("log".to_string()),
+                        }),
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                    ])
+                    .level(log::LevelFilter::Info)
+                    .build(),
+            );
+
+            log::info!("Launcher starting...");
 
             let show_i = MenuItem::with_id(app, "show", "Exibir Launcher", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
@@ -142,24 +242,23 @@ pub fn run() {
             check_update_requirements,
             check_for_game_update,
             start_game_update,
-            log_updater_error,
             updater::download::validate_pwr_file,
             game::launch_game,
             player::get_player_name_command,
             player::set_player_name_command,
-            updater::java::get_java_bin_path,
+            java_bin_path_command,
             search_mods_cf,
             get_installed_mods,
             install_mod_cf,
             remove_mod,
             toggle_mod,
             mods::api::get_categories,
-            mods::manager::get_active_profile,
-            mods::manager::set_active_profile,
-            mods::manager::list_profiles,
-            mods::manager::create_profile,
-            mods::manager::delete_profile,
-            mods::manager::check_mods_updates,
+            mods::manifest::get_active_profile,
+            mods::profiles::set_active_profile,
+            mods::profiles::list_profiles,
+            mods::profiles::create_profile,
+            mods::profiles::delete_profile,
+            mods::operations::check_mods_updates,
             system::open_game_folder,
             system::open_url,
             system::wipe_game_data,

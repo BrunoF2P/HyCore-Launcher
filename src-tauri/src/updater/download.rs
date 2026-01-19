@@ -8,7 +8,6 @@ use sha2::{Digest, Sha256};
 use tauri::{Emitter, Window};
 
 use super::env::get_hycore_data_dir;
-use super::system::log_error;
 use super::types::UpdateStatus;
 
 pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Result<(), String> {
@@ -22,7 +21,7 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
     let mut downloaded = if dest.exists() {
         let size = fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
         if size > 0 {
-            log_error(&format!("Found partial file: {} bytes", size));
+            log::info!("Found partial file: {} bytes", size);
         }
         size
     } else {
@@ -33,10 +32,10 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
 
     if downloaded > 0 {
         let range_header = format!("bytes={}-", downloaded);
-        log_error(&format!("Sending Range request: {}", range_header));
+        log::info!("Sending Range request: {}", range_header);
         request = request.header("Range", range_header);
     } else {
-        log_error(&format!("Starting download from {}", url));
+        log::info!("Starting download from {}", url);
     }
 
     let response = request
@@ -45,7 +44,7 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
         .map_err(|e: reqwest::Error| format!("GET request failed: {}", e))?;
 
     let status = response.status();
-    log_error(&format!("GET response status: {}", status));
+    log::info!("GET response status: {}", status);
 
     if !status.is_success() {
         return Err(format!("Server returned error: {}", status));
@@ -58,7 +57,7 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
             .and_then(|v| v.to_str().ok())
             .ok_or("Server used 206 but did not provide Content-Range header")?;
 
-        log_error(&format!("Content-Range: {}", content_range));
+        log::info!("Content-Range: {}", content_range);
 
         let size_str = content_range
             .split('/')
@@ -69,15 +68,15 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
             .parse::<u64>()
             .map_err(|_| "Could not parse total size from Content-Range")?;
 
-        log_error(&format!(
+        log::info!(
             "Total file size from Content-Range: {} bytes ({:.2} MB)",
             total,
             total as f64 / 1_048_576.0
-        ));
+        );
         total
     } else {
         if downloaded > 0 {
-            log_error("Server doesn't support resume (returned 200 instead of 206), restarting");
+            log::warn!("Server doesn't support resume (returned 200 instead of 206), restarting");
             downloaded = 0;
         }
 
@@ -89,24 +88,25 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
             return Err("Server returned Content-Length: 0".to_string());
         }
 
-        log_error(&format!(
+        log::info!(
             "Total file size from Content-Length: {} bytes ({:.2} MB)",
             len,
             len as f64 / 1_048_576.0
-        ));
+        );
         len
     };
 
     if downloaded == total_size {
-        log_error("File already complete");
+        log::info!("File already complete");
         return Ok(());
     }
 
     if downloaded > total_size {
-        log_error(&format!(
+        log::warn!(
             "Local file ({}) larger than remote ({}), restarting",
-            downloaded, total_size
-        ));
+            downloaded,
+            total_size
+        );
         downloaded = 0;
         let _ = fs::remove_file(dest);
     }
@@ -127,13 +127,13 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
     }
 
     let mut file = if downloaded > 0 {
-        log_error(&format!("Opening file in append mode"));
+        log::info!("Opening file in append mode");
         fs::OpenOptions::new()
             .append(true)
             .open(dest)
             .map_err(|e| e.to_string())?
     } else {
-        log_error(&format!("Creating new file at {:?}", dest));
+        log::info!("Creating new file at {:?}", dest);
         fs::File::create(dest).map_err(|e| e.to_string())?
     };
 
@@ -142,18 +142,18 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
     let start_time = Instant::now();
     let mut bytes_in_second = 0u64;
 
-    log_error("Starting stream download...");
+    log::info!("Starting stream download...");
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e: reqwest::Error| {
             let err = format!("Stream error at {} bytes: {}", downloaded, e);
-            log_error(&err);
+            log::error!("{}", err);
             err
         })?;
 
         file.write_all(&chunk).map_err(|e| {
             let err = format!("Write error at {} bytes: {}", downloaded, e);
-            log_error(&err);
+            log::error!("{}", err);
             err
         })?;
 
@@ -189,7 +189,7 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
         }
     }
 
-    log_error("Stream finished");
+    log::info!("Stream finished");
 
     if downloaded != total_size {
         let err = format!(
@@ -198,7 +198,7 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
             total_size,
             (downloaded as f64 / total_size as f64) * 100.0
         );
-        log_error(&err);
+        log::error!("{}", err);
         return Err(format!("{}. Run update again to resume.", err));
     }
 
@@ -210,10 +210,12 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
     } else {
         total_size as f64 / 1_048_576.0
     };
-    log_error(&format!(
+    log::info!(
         "Download complete: {} bytes in {}s (avg {:.2} MB/s)",
-        total_size, elapsed, avg_speed
-    ));
+        total_size,
+        elapsed,
+        avg_speed
+    );
 
     Ok(())
 }
@@ -248,15 +250,12 @@ pub async fn download_with_retry(
                     },
                 );
 
-                log_error(&format!("Retry {}/{} failed: {}", attempt + 1, retries, e));
+                log::warn!("Retry {}/{} failed: {}", attempt + 1, retries, e);
                 tokio::time::sleep(delay).await;
                 continue;
             }
             Err(e) => {
-                log_error(&format!(
-                    "Download failed after {} attempts: {}",
-                    retries, e
-                ));
+                log::error!("Download failed after {} attempts: {}", retries, e);
                 return Err(format!("Download failed: {}", e));
             }
         }

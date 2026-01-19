@@ -47,10 +47,22 @@ pub fn set_player_name(name: &str) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_player_name_command() -> String {
-    get_player_name()
+    let name = get_player_name();
+    log::info!("Player name requested: {}", name);
+    name
 }
 
 #[tauri::command]
 pub fn set_player_name_command(name: String) -> Result<(), String> {
-    set_player_name(&name)
+    log::info!("Setting player name to: {}", name);
+    match set_player_name(&name) {
+        Ok(_) => {
+            log::info!("Player name updated successfully");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to update player name: {}", e);
+            Err(e)
+        }
+    }
 }

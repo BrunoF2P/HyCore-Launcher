@@ -22,7 +22,7 @@ fn get_client() -> Result<Client, String> {
         .map_err(|e| e.to_string())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchModsParams {
     pub query: Option<String>,
@@ -164,7 +164,7 @@ pub async fn get_mod_file_details(mod_id: i32, file_id: i32) -> Result<ModFile, 
 pub async fn get_categories() -> Result<Vec<ModCategory>, String> {
     let client = get_client()?;
     let url = format!("{}/categories", CURSE_FORGE_BASE_URL);
-    
+
     let query_params = vec![("gameId", HYTALE_GAME_ID.to_string())];
     let final_url = Url::parse_with_params(&url, &query_params).map_err(|e| e.to_string())?;
 

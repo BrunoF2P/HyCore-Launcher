@@ -1,25 +1,9 @@
-use chrono;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::env::get_hycore_data_dir;
 use super::types::SystemRequirements;
-
-pub fn log_error(message: &str) {
-    let log_path = get_hycore_data_dir().join("updater.log");
-    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    let log_line = format!("[{}] ERR: {}\n", timestamp, message);
-
-    if let Ok(mut file) = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-    {
-        let _ = file.write_all(log_line.as_bytes());
-    }
-}
 
 pub async fn check_system_requirements() -> SystemRequirements {
     let disks = sysinfo::Disks::new_with_refreshed_list();

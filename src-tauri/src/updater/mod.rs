@@ -6,7 +6,7 @@ pub mod system;
 pub mod types;
 
 pub use download::download_with_retry;
-pub use system::{check_system_requirements, log_error};
+pub use system::check_system_requirements;
 pub use types::{SystemRequirements, UpdateStatus};
 
 use std::fs;
@@ -78,6 +78,7 @@ async fn find_latest_version() -> Result<u32, String> {
         return Err("Could not find any game version on patch server".to_string());
     }
 
+    log::info!("Latest available game version: {}", latest);
     Ok(latest)
 }
 
@@ -174,6 +175,7 @@ pub async fn run_update(window: Window) -> Result<(), String> {
 
     clean_staging_dir(&staging_dir)?;
 
+    log::info!("Applying patch with Butler to {:?}", game_dir);
     let output = Command::new(butler)
         .arg("apply")
         .arg("--staging-dir")
@@ -191,7 +193,7 @@ pub async fn run_update(window: Window) -> Result<(), String> {
             stdout.trim(),
             stderr.trim()
         );
-        log_error(&err_msg);
+        log::error!("{}", err_msg);
 
         if pwr_path.exists() {
             let _ = fs::remove_file(&pwr_path);
@@ -210,6 +212,8 @@ pub async fn run_update(window: Window) -> Result<(), String> {
         latest.to_string(),
     )
     .map_err(|e| e.to_string())?;
+
+    log::info!("Update complete! Version bumped to {}", latest);
 
     let _ = window.emit(
         "update-status",
