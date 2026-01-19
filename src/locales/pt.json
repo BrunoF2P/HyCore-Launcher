@@ -97,5 +97,9 @@
         "uninstall": "Desinstalar",
         "github": "Repositório GitHub",
         "report_issue": "Reportar Problema"
+    },
+    "self_update": {
+        "title": "Atualização do Launcher",
+        "message": "Uma nova versão do launcher {{version}} está disponível! Deseja atualizar agora?"
     }
 }

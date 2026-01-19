@@ -39,7 +39,7 @@ export const UpdateOverlay: React.FC = () => {
                     </h2>
                     {status.stage !== 'error' && (
                         <p className="text-zinc-400 text-xs">
-                            {status.message || t('update.preparing')}
+                            {t(`update.stages.${status.stage}`) || t('update.preparing')}
                         </p>
                     )}
                 </div>

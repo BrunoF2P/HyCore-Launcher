@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { check } from '@tauri-apps/plugin-updater';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
+import i18next from 'i18next';
 
 interface LauncherUpdateState {
     checking: boolean;
@@ -14,14 +15,20 @@ export const useLauncherStore = create<LauncherUpdateState>((set) => ({
     updateAvailable: false,
 
     checkSelfUpdate: async () => {
+        // Prevent concurrent checks (React StrictMode or multiple triggers)
+        if (useLauncherStore.getState().checking) return;
+
         set({ checking: true });
         try {
             const update = await check();
-            if (update?.available) {
+            if (update) {
                 set({ updateAvailable: true });
                 const yes = await ask(
-                    `New launcher version ${update.version} is available! Do you want to update now?`,
-                    { title: 'Launcher Update', kind: 'info' }
+                    i18next.t('self_update.message', { version: update.version }),
+                    {
+                        title: i18next.t('self_update.title'),
+                        kind: 'info'
+                    }
                 );
 
                 if (yes) {

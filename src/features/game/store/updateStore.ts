@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import i18next from 'i18next';
 
 interface UpdateStatus {
     stage: 'idle' | 'checking' | 'butler' | 'download' | 'install' | 'error' | 'done';
@@ -61,7 +62,7 @@ export const useUpdateStore = create<UpdateState>((set) => {
                     status: {
                         stage: 'error',
                         progress: 0,
-                        message: 'Update failed. Technical details in updater.log'
+                        message: i18next.t('update.error_desc')
                     }
                 });
             }
