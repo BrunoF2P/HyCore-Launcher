@@ -1,4 +1,4 @@
-use super::types::{CurseForgeMod, CurseForgeResponse, ModFile, SearchResult};
+use super::types::{CurseForgeMod, CurseForgeResponse, ModCategory, ModFile, SearchResult};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use reqwest::{Client, Url};
 use std::time::Duration;
@@ -27,6 +27,7 @@ fn get_client() -> Result<Client, String> {
 pub struct SearchModsParams {
     pub query: Option<String>,
     pub category_id: Option<i32>,
+    pub class_id: Option<i32>,
     pub sort_field: Option<i32>, // 1=Featured, 2=Popularity, 3=LastUpdated, 4=Name, 5=Author, 6=TotalDownloads
     pub sort_order: Option<String>, // asc, desc
     pub page_size: Option<i32>,
@@ -43,7 +44,10 @@ pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, Strin
         query_params.push(("searchFilter", q));
     }
     if let Some(cat) = params.category_id {
-        query_params.push(("classId", cat.to_string()));
+        query_params.push(("categoryId", cat.to_string()));
+    }
+    if let Some(class) = params.class_id {
+        query_params.push(("classId", class.to_string()));
     }
     if let Some(sort) = params.sort_field {
         query_params.push(("sortField", sort.to_string()));
@@ -89,6 +93,30 @@ pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, Strin
     })
 }
 
+pub async fn get_mods(mod_ids: Vec<i32>) -> Result<Vec<CurseForgeMod>, String> {
+    let client = get_client()?;
+    let url = format!("{}/mods", CURSE_FORGE_BASE_URL);
+
+    let body = serde_json::json!({
+        "modIds": mod_ids
+    });
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("CurseForge API error: {}", resp.status()));
+    }
+
+    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> =
+        resp.json().await.map_err(|e| e.to_string())?;
+    Ok(cf_resp.data)
+}
+
 pub async fn get_mod_details(mod_id: i32) -> Result<CurseForgeMod, String> {
     let client = get_client()?;
     let url = format!("{}/mods/{}", CURSE_FORGE_BASE_URL, mod_id);
@@ -129,5 +157,30 @@ pub async fn get_mod_file_details(mod_id: i32, file_id: i32) -> Result<ModFile, 
     }
 
     let cf_resp: CurseForgeResponse<ModFile> = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(cf_resp.data)
+}
+
+#[tauri::command]
+pub async fn get_categories() -> Result<Vec<ModCategory>, String> {
+    let client = get_client()?;
+    let url = format!("{}/categories", CURSE_FORGE_BASE_URL);
+    
+    let query_params = vec![("gameId", HYTALE_GAME_ID.to_string())];
+    let final_url = Url::parse_with_params(&url, &query_params).map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get(final_url)
+        .send()
+        .await
+        .map_err(|e: reqwest::Error| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("CurseForge API error: {}", resp.status()));
+    }
+
+    let cf_resp: CurseForgeResponse<Vec<ModCategory>> = resp
+        .json()
+        .await
+        .map_err(|e: reqwest::Error| e.to_string())?;
     Ok(cf_resp.data)
 }

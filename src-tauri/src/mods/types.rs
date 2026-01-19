@@ -140,3 +140,11 @@ pub struct ModManifest {
     pub mods: Vec<Mod>,
     pub version: String,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Modpack {
+    pub name: String,
+    pub mod_count: usize,
+    pub created_at: String,
+}
