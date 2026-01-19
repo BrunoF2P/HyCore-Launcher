@@ -1,43 +1,33 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Modpack } from "./types";
 import { Plus, Package, Calendar, ArrowRight, Trash2, CheckCircle2, FilePlus } from "lucide-react";
+import { useModStore } from "../store/useModStore";
 
-interface ProfileManagerProps {
-    onActiveChanged: () => void;
-}
+export const ProfileManager = () => {
+    const {
+        profiles,
+        activeProfile,
+        fetchProfiles,
+        fetchActiveProfile,
+        createProfile,
+        deleteProfile,
+        setActiveProfile
+    } = useModStore();
 
-export const ProfileManager = ({ onActiveChanged }: ProfileManagerProps) => {
-    const [profiles, setProfiles] = useState<Modpack[]>([]);
-    const [activeProfile, setActiveProfile] = useState<string>("");
     const [newProfileName, setNewProfileName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [switchingPack, setSwitchingPack] = useState<string | null>(null);
 
-    const fetchData = async () => {
-        try {
-            const [list, active] = await Promise.all([
-                invoke<Modpack[]>("list_profiles"),
-                invoke<string>("get_active_profile")
-            ]);
-            setProfiles(list);
-            setActiveProfile(active);
-        } catch (error) {
-            console.error("Failed to fetch profiles", error);
-        }
-    };
-
     useEffect(() => {
-        fetchData();
+        fetchProfiles();
+        fetchActiveProfile();
     }, []);
 
     const handleCreate = async (empty: boolean) => {
         if (!newProfileName.trim()) return;
         setIsCreating(true);
         try {
-            await invoke("create_profile", { name: newProfileName, empty });
+            await createProfile(newProfileName, empty);
             setNewProfileName("");
-            fetchData();
         } catch (error) {
             alert("Erro ao criar perfil: " + error);
         } finally {
@@ -49,9 +39,7 @@ export const ProfileManager = ({ onActiveChanged }: ProfileManagerProps) => {
         if (name === "Default") return;
         if (!confirm(`Deseja excluir o perfil "${name}"?`)) return;
         try {
-            await invoke("delete_profile", { name });
-            fetchData();
-            onActiveChanged();
+            await deleteProfile(name);
         } catch (error) {
             console.error("Failed to delete profile", error);
         }
@@ -61,10 +49,7 @@ export const ProfileManager = ({ onActiveChanged }: ProfileManagerProps) => {
         if (name === activeProfile) return;
         setSwitchingPack(name);
         try {
-            await invoke("set_active_profile", { name });
-            setActiveProfile(name);
-            onActiveChanged();
-            fetchData();
+            await setActiveProfile(name);
         } catch (error) {
             alert("Erro ao ativar perfil: " + error);
         } finally {

@@ -3,19 +3,18 @@ import { invoke } from '@tauri-apps/api/core';
 import { Search, Filter, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ModCard from './ModCard';
-import { SearchResult, CurseForgeMod, SearchModsParams, InstalledMod } from './types';
+import { SearchResult, CurseForgeMod, SearchModsParams } from '../types';
 import { CategorySidebar } from './CategorySidebar';
 import { ModDetailOverlay } from './ModDetailOverlay';
+import { useModStore } from '../store/useModStore';
 
-
-interface ModBrowserProps {
-    installedMods: InstalledMod[];
-    onInstallRequest: (mod: CurseForgeMod) => void;
-    installingIds: number[];
-}
-
-export default function ModBrowser({ installedMods, onInstallRequest, installingIds }: ModBrowserProps) {
+export default function ModBrowser() {
+    const { installedMods, installingIds, installMod } = useModStore();
     const { t } = useTranslation();
+
+    const onInstallRequest = (mod: any) => {
+        installMod(mod).catch(err => alert(`${t('mods.install_failed')}: ${err}`));
+    };
     const [query, setQuery] = useState('');
     const [mods, setMods] = useState<CurseForgeMod[]>([]);
     const [loading, setLoading] = useState(false);
@@ -67,19 +66,11 @@ export default function ModBrowser({ installedMods, onInstallRequest, installing
     }, [query, page, loading, sortField, sortOrder, categoryId]);
 
     useEffect(() => {
-        search(true);
-    }, [categoryId]);
-
-    useEffect(() => {
         const handler = setTimeout(() => {
             search(true);
-        }, 500);
+        }, 300); // Shorter debounce for general search
         return () => clearTimeout(handler);
-    }, [query]);
-
-    useEffect(() => {
-        search(true);
-    }, [sortField, sortOrder]);
+    }, [query, categoryId, sortField, sortOrder]);
 
     const isInstalled = (cfId: number) => {
         return installedMods.some(m => m.curseForgeId === cfId);
@@ -227,9 +218,6 @@ export default function ModBrowser({ installedMods, onInstallRequest, installing
                 <ModDetailOverlay
                     mod={selectedMod}
                     onClose={() => setSelectedMod(null)}
-                    onInstall={onInstallRequest}
-                    isInstalling={installingIds.includes(selectedMod.id)}
-                    isInstalled={isInstalled(selectedMod.id)}
                 />
             )}
         </div>

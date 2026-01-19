@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Globe, Layers, ArrowLeft, Package } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ModBrowser from './ModBrowser';
 import ModLibrary from './ModLibrary';
 import { ProfileManager } from './ProfileManager';
-import { CurseForgeMod, InstalledMod } from './types';
+import { useModStore } from '../store/useModStore';
 
 interface ModsPageProps {
     onBack: () => void;
@@ -14,91 +13,27 @@ interface ModsPageProps {
 export default function ModsPage({ onBack }: ModsPageProps) {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'browse' | 'library' | 'modpacks'>('library');
-    const [installedMods, setInstalledMods] = useState<InstalledMod[]>([]);
-    const [activeProfile, setActiveProfile] = useState<string>("Default");
-    const [refreshTrigger, setRefreshTrigger] = useState(0);
-    const [installingIds, setInstallingIds] = useState<number[]>([]);
 
-    // Fetch installed mods and active profile
+    const {
+        installedMods,
+        activeProfile,
+        fetchInstalledMods,
+        fetchActiveProfile,
+        checkUpdates
+    } = useModStore();
+
+    // Initial fetch
     useEffect(() => {
-        Promise.all([
-            invoke<InstalledMod[]>('get_installed_mods'),
-            invoke<string>('get_active_profile')
-        ]).then(([mods, active]) => {
-            setInstalledMods(mods);
-            setActiveProfile(active);
-            // Optionally check for updates after listing mods
-            if (mods.length > 0) {
-                checkUpdates();
-            }
-        }).catch(console.error);
-    }, [refreshTrigger]);
+        fetchInstalledMods();
+        fetchActiveProfile();
+    }, []);
 
-    const checkUpdates = async () => {
-        try {
-            const updatedIds = await invoke<string[]>('check_mods_updates');
-            if (updatedIds.length > 0) {
-                // Refresh list to show badges
-                const mods = await invoke<InstalledMod[]>('get_installed_mods');
-                setInstalledMods(mods);
-            }
-        } catch (error) {
-            console.error("Failed to check for mod updates", error);
+    // Check for updates once
+    useEffect(() => {
+        if (installedMods.length > 0) {
+            checkUpdates();
         }
-    };
-
-    const handleInstall = async (mod: CurseForgeMod) => {
-        setInstallingIds(prev => [...prev, mod.id]);
-        try {
-            await invoke('install_mod_cf', { modId: mod.id, fileId: null });
-            setRefreshTrigger(prev => prev + 1);
-        } catch (error) {
-            console.error('Install failed:', error);
-            alert(`${t('mods.install_failed')}: ${error}`);
-        } finally {
-            setInstallingIds(prev => prev.filter(id => id !== mod.id));
-        }
-    };
-
-    const handleRemove = async (mod: InstalledMod) => {
-        if (!confirm(t('mods.confirm_uninstall', { name: mod.name }))) return;
-
-        try {
-            await invoke('remove_mod', { modId: mod.id });
-            setRefreshTrigger(prev => prev + 1);
-        } catch (error) {
-            console.error('Remove failed:', error);
-            alert(`${t('mods.remove_failed')}: ${error}`);
-        }
-    };
-
-    const handleToggle = async (mod: InstalledMod, enabled: boolean) => {
-        try {
-            await invoke('toggle_mod', { modId: mod.id, enabled });
-            setRefreshTrigger(prev => prev + 1);
-        } catch (error) {
-            console.error('Toggle failed:', error);
-            alert(`${t('mods.toggle_failed')}: ${error}`);
-        }
-    }
-
-    const handleUpdate = async (mod: InstalledMod) => {
-        if (!mod.curseForgeId || !mod.latestFileId) return;
-        setInstallingIds(prev => [...prev, mod.curseForgeId!]);
-        try {
-            // Re-installing the specific file ID will replace the old one
-            await invoke('install_mod_cf', {
-                modId: mod.curseForgeId,
-                fileId: mod.latestFileId
-            });
-            setRefreshTrigger(prev => prev + 1);
-        } catch (err) {
-            console.error('Update failed:', err);
-            alert(t('mods.install_failed') + ': ' + err);
-        } finally {
-            setInstallingIds(prev => prev.filter(id => id !== mod.curseForgeId));
-        }
-    };
+    }, [installedMods.length === 0]);
 
     return (
         <div className="flex flex-col h-screen bg-[#0c0f16] text-white">
@@ -162,23 +97,11 @@ export default function ModsPage({ onBack }: ModsPageProps) {
 
             <div className="flex-1 relative overflow-hidden">
                 {activeTab === 'browse' ? (
-                    <ModBrowser
-                        installedMods={installedMods}
-                        onInstallRequest={handleInstall}
-                        installingIds={installingIds}
-                    />
+                    <ModBrowser />
                 ) : activeTab === 'library' ? (
-                    <ModLibrary
-                        mods={installedMods}
-                        onToggle={handleToggle}
-                        onRemove={handleRemove}
-                        onUpdate={handleUpdate}
-                        isLoading={false}
-                    />
+                    <ModLibrary />
                 ) : (
-                    <ProfileManager
-                        onActiveChanged={() => setRefreshTrigger(prev => prev + 1)}
-                    />
+                    <ProfileManager />
                 )}
             </div>
         </div>

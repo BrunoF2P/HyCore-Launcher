@@ -1,18 +1,30 @@
-import { InstalledMod } from './types';
+import { useModStore } from '../store/useModStore';
 import ModCard from './ModCard';
 import { Package } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-interface ModLibraryProps {
-    mods: InstalledMod[];
-    onToggle: (mod: InstalledMod, enabled: boolean) => void;
-    onRemove: (mod: InstalledMod) => void;
-    onUpdate: (mod: InstalledMod) => void;
-    isLoading: boolean;
-}
-
-export default function ModLibrary({ mods, onToggle, onRemove, onUpdate, isLoading }: ModLibraryProps) {
+export default function ModLibrary() {
     const { t } = useTranslation();
+    const {
+        installedMods: mods,
+        toggleMod: onToggle,
+        removeMod: onRemove,
+        updateMod: onUpdate,
+        loading: isLoading
+    } = useModStore();
+
+    const handleToggle = (mod: any, enabled: boolean) => {
+        onToggle(mod.id, enabled).catch(err => alert(t('mods.toggle_failed') + ': ' + err));
+    };
+
+    const handleRemove = (mod: any) => {
+        if (!confirm(t('mods.confirm_uninstall', { name: mod.name }))) return;
+        onRemove(mod.id).catch(err => alert(t('mods.remove_failed') + ': ' + err));
+    };
+
+    const handleUpdate = (mod: any) => {
+        onUpdate(mod).catch(err => alert(t('mods.install_failed') + ': ' + err));
+    };
 
     if (mods.length === 0 && !isLoading) {
         return (
@@ -38,9 +50,9 @@ export default function ModLibrary({ mods, onToggle, onRemove, onUpdate, isLoadi
                             key={mod.id}
                             mod={mod}
                             isInstalled={true}
-                            onToggle={onToggle}
-                            onRemove={onRemove}
-                            onUpdate={onUpdate}
+                            onToggle={handleToggle}
+                            onRemove={handleRemove}
+                            onUpdate={handleUpdate}
                         />
                     ))}
                 </div>

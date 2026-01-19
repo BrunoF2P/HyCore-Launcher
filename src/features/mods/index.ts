@@ -1,1 +1,1 @@
-export { default as ModsPage } from './ModsLayout';
+export { default as ModsPage } from './components/ModsLayout';

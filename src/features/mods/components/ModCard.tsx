@@ -1,4 +1,4 @@
-import { CurseForgeMod, InstalledMod } from './types';
+import { CurseForgeMod, InstalledMod } from '../types';
 import { Download, Trash2, Check, X, Calendar, ArrowUpCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 

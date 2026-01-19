@@ -10,7 +10,7 @@ import { useGameStore } from "./features/game/store/useGameStore";
 import { useLauncherStore } from "./features/system/store/useLauncherStore";
 import { Suspense, lazy } from "react";
 
-const ModsPage = lazy(() => import("./features/mods/ModsLayout"));
+const ModsPage = lazy(() => import("./features/mods/components/ModsLayout"));
 
 function App() {
   const { t } = useTranslation();

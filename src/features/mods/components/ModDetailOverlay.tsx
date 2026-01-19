@@ -1,16 +1,21 @@
-import { X, Download, User, Calendar, ExternalLink, Hash } from "lucide-react";
-import { CurseForgeMod } from "./types";
 import { useState } from "react";
+import { X, Download, User, Calendar, ExternalLink, Hash } from "lucide-react";
+import { CurseForgeMod } from "../types";
+import { useModStore } from "../store/useModStore";
 
 interface ModDetailOverlayProps {
     mod: CurseForgeMod;
     onClose: () => void;
-    onInstall: (mod: CurseForgeMod) => void;
-    isInstalling: boolean;
-    isInstalled: boolean;
 }
 
-export const ModDetailOverlay = ({ mod, onClose, onInstall, isInstalling, isInstalled }: ModDetailOverlayProps) => {
+export const ModDetailOverlay = ({ mod, onClose }: ModDetailOverlayProps) => {
+    const { installMod, installingIds, installedMods } = useModStore();
+    const isInstalling = installingIds.includes(mod.id);
+    const isInstalled = installedMods.some(m => m.curseForgeId === mod.id);
+
+    const onInstall = (m: CurseForgeMod) => {
+        installMod(m).catch(err => alert("Erro ao instalar: " + err));
+    };
     const [activeScreenshot, setActiveScreenshot] = useState(mod.screenshots[0]?.url || mod.logo?.url);
 
     return (

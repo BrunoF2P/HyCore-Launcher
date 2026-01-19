@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { ModCategory } from "./types";
 import { ChevronRight, LayoutGrid } from "lucide-react";
+import { useModStore } from "../store/useModStore";
 
 interface CategorySidebarProps {
     onSelectCategory: (categoryId: number | undefined) => void;
@@ -9,17 +8,11 @@ interface CategorySidebarProps {
 }
 
 export const CategorySidebar = ({ onSelectCategory, activeCategoryId }: CategorySidebarProps) => {
-    const [categories, setCategories] = useState<ModCategory[]>([]);
+    const { categories, fetchCategories } = useModStore();
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        invoke<ModCategory[]>("get_categories")
-            .then((data) => {
-                // Filter only relevant categories for Hytale if needed, or show all
-                setCategories(data.sort((a, b) => a.name.localeCompare(b.name)));
-            })
-            .catch(console.error)
-            .finally(() => setIsLoading(false));
+        fetchCategories().finally(() => setIsLoading(false));
     }, []);
 
     if (isLoading) {
