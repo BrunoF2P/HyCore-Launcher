@@ -44,10 +44,27 @@ export const useGameStore = create<GameState>((set) => ({
             setTimeout(() => {
                 set({ buttonState: 'ready' });
             }, 2000);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to launch game:', err);
-            alert(`Failed to launch game: ${err}`);
-            set({ buttonState: 'ready' });
+            const errorMsg = String(err);
+            if (errorMsg.includes("not installed") || errorMsg.includes("executable not found")) {
+                // Game missing, switch to update mode
+                set({ buttonState: 'checking' });
+                set({ buttonState: 'checking' });
+                try {
+                    const [, latestVersion] = await invoke<[boolean, number]>('check_for_game_update');
+                    set({
+                        updateAvailable: true,
+                        latestVersion,
+                        buttonState: 'update_available',
+                    });
+                } catch (e) {
+                    set({ buttonState: 'ready' });
+                }
+            } else {
+                alert(`Failed to launch game: ${err}`);
+                set({ buttonState: 'ready' });
+            }
         }
     },
 }));

@@ -40,6 +40,7 @@ export const ManagementMenu = ({ onOpenMods }: ManagementMenuProps) => {
                 window.location.reload();
             } catch (error) {
                 console.error("Failed to uninstall:", error);
+                alert(t('management.uninstall_failed') + ": " + error);
             }
         }
     };

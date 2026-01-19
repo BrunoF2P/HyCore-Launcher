@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useGameStore } from "../store/useGameStore";
 import { useUpdateStore } from "../store/updateStore";
@@ -5,8 +6,15 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 
 export const LaunchSection = () => {
     const { t } = useTranslation();
-    const { buttonState, launchGame } = useGameStore();
+    const { buttonState, launchGame, checkForUpdates, setButtonState } = useGameStore();
     const { status, isUpdating, startUpdate } = useUpdateStore();
+
+    useEffect(() => {
+        if (!isUpdating && status.stage === 'done') {
+            setButtonState('idle');
+            checkForUpdates();
+        }
+    }, [isUpdating, status.stage]);
 
     const handleButtonClick = async () => {
         if (buttonState === 'update_available') {
@@ -17,7 +25,6 @@ export const LaunchSection = () => {
     };
 
     const getButtonContent = () => {
-        // During updates, show download progress
         if (isUpdating && status.stage === 'download') {
             return (
                 <div className="relative w-full h-full flex items-center justify-center">
@@ -32,7 +39,6 @@ export const LaunchSection = () => {
             );
         }
 
-        // Other update stages
         if (isUpdating) {
             return (
                 <span>
@@ -41,7 +47,6 @@ export const LaunchSection = () => {
             );
         }
 
-        // Button states
         switch (buttonState) {
             case 'checking':
                 return (
@@ -83,14 +88,14 @@ export const LaunchSection = () => {
             )}
 
             {!isUpdating && status.stage === 'done' && (
-                <div className="flex items-center gap-2 text-emerald-500 animate-in fade-in slide-in-from-right-2 duration-500">
-                    <CheckCircle2 className="w-5 h-5 drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]" />
+                <div className="flex items-center gap-2 text-sky-400 animate-in fade-in slide-in-from-right-2 duration-500">
+                    <CheckCircle2 className="w-5 h-5 drop-shadow-[0_0_8px_rgba(56,189,248,0.3)]" />
                     <span className="text-[10px] font-bold uppercase tracking-wider">{t('update.complete')}</span>
                 </div>
             )}
 
             <button
-                className={`group relative overflow-hidden flex items-center justify-center w-60 h-14 rounded bg-gradient-to-br ${buttonColor} text-black text-xl font-black uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isDisabled ? 'cursor-wait' : 'cursor-pointer'}`}
+                className={`group relative overflow-hidden flex items-center justify-center w-64 h-16 rounded bg-gradient-to-br ${buttonColor} text-black text-2xl font-black uppercase tracking-tighter transition-all hover:scale-[1.02] hover:shadow-[0_0_25px_rgba(255,179,0,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isDisabled ? 'cursor-wait' : 'cursor-pointer'}`}
                 onClick={handleButtonClick}
                 disabled={isDisabled}
             >
