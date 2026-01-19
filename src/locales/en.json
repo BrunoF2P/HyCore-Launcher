@@ -11,7 +11,24 @@
         "change_name": "Change Name",
         "enter_name": "Enter your new username:",
         "uninstall_failed": "Failed to uninstall game",
-        "click_to_edit": "Click to edit"
+        "click_to_edit": "Click to edit",
+        "settings": "Settings"
+    },
+    "settings": {
+        "title": "Launcher Settings",
+        "subtitle": "Hycore Management",
+        "java_performance": "Java Performance",
+        "ram_min": "Minimum RAM (GB)",
+        "ram_max": "Maximum RAM (GB)",
+        "custom_jvm_args": "Custom JVM Arguments",
+        "behavior_social": "Behavior & Social",
+        "discord_rpc": "Discord Rich Presence",
+        "discord_rpc_desc": "Display game status on your Discord profile.",
+        "minimize_to_tray": "Minimize to Tray",
+        "minimize_to_tray_desc": "When closing the launcher, it will continue running in the system tray.",
+        "close_on_launch": "Close on Game Launch",
+        "close_on_launch_desc": "The launcher will automatically close when the game starts.",
+        "save_changes": "Save Changes"
     },
     "mods": {
         "title": "Mods",
@@ -96,7 +113,8 @@
         "clear_data": "Clear Data",
         "uninstall": "Uninstall",
         "github": "GitHub Repository",
-        "report_issue": "Report Issue"
+        "report_issue": "Report Issue",
+        "settings": "Settings"
     },
     "self_update": {
         "title": "Launcher Update",

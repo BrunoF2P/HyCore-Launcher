@@ -11,7 +11,24 @@
         "change_name": "Alterar Nome",
         "enter_name": "Digite seu novo nome de usuário:",
         "uninstall_failed": "Falha ao desinstalar o jogo",
-        "click_to_edit": "Clique para editar"
+        "click_to_edit": "Clique para editar",
+        "settings": "Ajustes"
+    },
+    "settings": {
+        "title": "Configurações do Launcher",
+        "subtitle": "Gerenciamento Hycore",
+        "java_performance": "Performance Java",
+        "ram_min": "RAM Mínima (GB)",
+        "ram_max": "RAM Máxima (GB)",
+        "custom_jvm_args": "Argumentos da JVM (Customizados)",
+        "behavior_social": "Comportamento e Social",
+        "discord_rpc": "Discord Rich Presence",
+        "discord_rpc_desc": "Exibir status do jogo no seu perfil do Discord.",
+        "minimize_to_tray": "Minimizar para a Bandeja",
+        "minimize_to_tray_desc": "Ao fechar o launcher, ele continuará rodando na tray.",
+        "close_on_launch": "Fechar ao Iniciar Jogo",
+        "close_on_launch_desc": "O launcher será encerrado automaticamente ao abrir o jogo.",
+        "save_changes": "Salvar Alterações"
     },
     "mods": {
         "title": "Mods",
@@ -96,7 +113,8 @@
         "clear_data": "Apagar Dados",
         "uninstall": "Desinstalar",
         "github": "Repositório GitHub",
-        "report_issue": "Reportar Problema"
+        "report_issue": "Reportar Problema",
+        "settings": "Configurações"
     },
     "self_update": {
         "title": "Atualização do Launcher",

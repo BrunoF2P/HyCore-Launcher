@@ -52,9 +52,9 @@ export const ManagementMenu = ({ onOpenMods, onOpenSettings }: ManagementMenuPro
                 <Puzzle className={`${iconClass} text-hyamber`} />
                 <span className={labelClass}>{t('management.mods')}</span>
             </button>
-            <button className={btnClass} title="Configurações" onClick={onOpenSettings}>
+            <button className={btnClass} title={t('tooltips.settings')} onClick={onOpenSettings}>
                 <Settings className={iconClass} />
-                <span className={labelClass}>Ajustes</span>
+                <span className={labelClass}>{t('management.settings')}</span>
             </button>
             <button className={btnClass} title={t('tooltips.open_folder')} onClick={handleOpenFolder}>
                 <FolderOpen className={iconClass} />
