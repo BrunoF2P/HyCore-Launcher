@@ -2,6 +2,8 @@ mod game;
 mod mods;
 mod news;
 mod player;
+pub mod settings;
+pub mod social;
 mod system;
 mod updater;
 
@@ -175,6 +177,9 @@ pub fn run() {
 
             log::info!("Launcher starting...");
 
+            // Initialize social integrations
+            social::discord::init_discord();
+
             let show_i = MenuItem::with_id(app, "show", "Exibir Launcher", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
@@ -219,8 +224,11 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                let settings = crate::settings::load_settings();
+                if settings.minimize_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .plugin(tauri_plugin_opener::init())
@@ -263,6 +271,8 @@ pub fn run() {
             system::open_url,
             system::wipe_game_data,
             system::uninstall_game,
+            settings::get_game_settings,
+            settings::set_game_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

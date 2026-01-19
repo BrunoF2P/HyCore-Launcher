@@ -9,7 +9,15 @@ pub fn get_hycore_data_dir() -> PathBuf {
 }
 
 pub fn get_game_dir() -> PathBuf {
-    get_hycore_data_dir().join("game")
+    let active = crate::mods::manifest::get_active_profile();
+    if active == "Default" {
+        get_hycore_data_dir().join("game")
+    } else {
+        get_hycore_data_dir()
+            .join("instances")
+            .join(active)
+            .join("game")
+    }
 }
 
 pub fn get_client_dir() -> PathBuf {
@@ -17,7 +25,39 @@ pub fn get_client_dir() -> PathBuf {
 }
 
 pub fn get_user_data_dir() -> PathBuf {
-    get_hycore_data_dir().join("UserData")
+    let active = crate::mods::manifest::get_active_profile();
+    if active == "Default" {
+        get_hycore_data_dir().join("UserData")
+    } else {
+        get_hycore_data_dir()
+            .join("instances")
+            .join(active)
+            .join("UserData")
+    }
+}
+
+pub fn get_version_file_path() -> PathBuf {
+    let active = crate::mods::manifest::get_active_profile();
+    if active == "Default" {
+        get_hycore_data_dir().join("version.json")
+    } else {
+        get_hycore_data_dir()
+            .join("instances")
+            .join(active)
+            .join("version.json")
+    }
+}
+
+pub fn get_legacy_version_file_path() -> PathBuf {
+    let active = crate::mods::manifest::get_active_profile();
+    if active == "Default" {
+        get_hycore_data_dir().join("version.txt")
+    } else {
+        get_hycore_data_dir()
+            .join("instances")
+            .join(active)
+            .join("version.txt")
+    }
 }
 
 pub fn get_jre_dir() -> PathBuf {

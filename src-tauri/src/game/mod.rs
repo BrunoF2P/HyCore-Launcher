@@ -2,10 +2,16 @@ use std::fs;
 use std::process::Command;
 
 #[tauri::command]
-pub async fn launch_game(window: tauri::Window) -> Result<(), String> {
+pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result<(), String> {
     let game_dir = crate::updater::env::get_game_dir();
     let client_dir = crate::updater::env::get_client_dir();
     let user_dir = crate::updater::env::get_user_data_dir();
+    let settings = crate::settings::load_settings();
+
+    crate::social::discord::update_discord_status(
+        "Jogando",
+        &format!("Perfil: {}", crate::mods::manifest::get_active_profile()),
+    );
 
     if !client_dir.exists() {
         return Err("Game not installed. Please update first.".to_string());
@@ -47,6 +53,17 @@ pub async fn launch_game(window: tauri::Window) -> Result<(), String> {
         .arg(&player_name)
         .arg("--auth-mode")
         .arg("Offline");
+
+    // Add Java RAM arguments if supported by the wrapper or if we're launching via java
+    // For now, we'll try to pass them as common JVM arguments
+    cmd.arg(format!("-Xms{}G", settings.ram_min_gb))
+        .arg(format!("-Xmx{}G", settings.ram_max_gb));
+
+    if !settings.custom_java_args.is_empty() {
+        for arg in settings.custom_java_args.split_whitespace() {
+            cmd.arg(arg);
+        }
+    }
 
     #[cfg(target_os = "linux")]
     {
@@ -94,5 +111,11 @@ pub async fn launch_game(window: tauri::Window) -> Result<(), String> {
         .map_err(|e| format!("Failed to launch game: {}", e))?;
 
     log::info!("Game launched successfully");
+
+    if settings.close_on_launch {
+        log::info!("Closing launcher as requested by settings");
+        app.exit(0);
+    }
+
     Ok(())
 }

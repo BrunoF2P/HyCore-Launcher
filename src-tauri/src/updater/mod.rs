@@ -16,8 +16,7 @@ use std::time::Duration;
 use tauri::{Emitter, Window};
 
 pub fn get_local_version_info() -> LocalVersionInfo {
-    let data_dir = env::get_hycore_data_dir();
-    let json_path = data_dir.join("version.json");
+    let json_path = env::get_version_file_path();
 
     if json_path.exists() {
         if let Ok(content) = fs::read_to_string(&json_path) {
@@ -27,8 +26,8 @@ pub fn get_local_version_info() -> LocalVersionInfo {
         }
     }
 
-    // Fallback to version.txt
-    let txt_path = data_dir.join("version.txt");
+    // Fallback to legacy version.txt
+    let txt_path = env::get_legacy_version_file_path();
     let version = fs::read_to_string(txt_path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
@@ -316,14 +315,11 @@ pub async fn run_update(window: Window) -> Result<(), String> {
     };
 
     if let Ok(json) = serde_json::to_string(&version_info) {
-        let _ = fs::write(env::get_hycore_data_dir().join("version.json"), json);
+        let _ = fs::write(env::get_version_file_path(), json);
     }
 
-    fs::write(
-        env::get_hycore_data_dir().join("version.txt"),
-        latest.to_string(),
-    )
-    .map_err(|e| e.to_string())?;
+    fs::write(env::get_legacy_version_file_path(), latest.to_string())
+        .map_err(|e| e.to_string())?;
 
     log::info!("Update complete! Version bumped to {}", latest);
 
