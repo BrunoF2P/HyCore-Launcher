@@ -11,10 +11,12 @@ import { useLauncherStore } from "./features/system/store/useLauncherStore";
 import { Suspense, lazy } from "react";
 
 const ModsPage = lazy(() => import("./features/mods/components/ModsLayout"));
+const SettingsOverlay = lazy(() => import("./features/settings/components/SettingsOverlay").then(m => ({ default: m.SettingsOverlay })));
 
 function App() {
   const { t } = useTranslation();
   const [view, setView] = useState<'dashboard' | 'mods'>('dashboard');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const checkForUpdates = useGameStore((state) => state.checkForUpdates);
   const checkSelfUpdate = useLauncherStore((state) => state.checkSelfUpdate);
 
@@ -34,7 +36,10 @@ function App() {
       {view === 'dashboard' ? (
         <>
           <main className="flex-1 min-h-0 flex flex-row px-10 pb-10 pt-32 z-10 overflow-visible items-center">
-            <ManagementMenu onOpenMods={() => setView('mods')} />
+            <ManagementMenu
+              onOpenMods={() => setView('mods')}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
             <div className="relative flex flex-col gap-5 ml-10">
               <img
                 src="/logo.png"
@@ -45,6 +50,11 @@ function App() {
             </div>
           </main>
           <ActionBar />
+          {settingsOpen && (
+            <Suspense fallback={null}>
+              <SettingsOverlay onClose={() => setSettingsOpen(false)} />
+            </Suspense>
+          )}
         </>
       ) : (
         <div className="absolute inset-0 z-20 bg-[#0c0f16]">

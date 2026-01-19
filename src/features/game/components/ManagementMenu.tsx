@@ -1,12 +1,13 @@
 import { useTranslation } from "react-i18next";
-import { Puzzle, FolderOpen, Trash2, ShieldX } from "lucide-react";
+import { Puzzle, FolderOpen, Trash2, ShieldX, Settings } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ManagementMenuProps {
     onOpenMods?: () => void;
+    onOpenSettings?: () => void;
 }
 
-export const ManagementMenu = ({ onOpenMods }: ManagementMenuProps) => {
+export const ManagementMenu = ({ onOpenMods, onOpenSettings }: ManagementMenuProps) => {
     const { t } = useTranslation();
 
     const btnClass = "w-16 h-16 bg-black/45 backdrop-blur-md border border-white/10 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:-translate-y-0.5 group shrink-0";
@@ -50,6 +51,10 @@ export const ManagementMenu = ({ onOpenMods }: ManagementMenuProps) => {
             <button className={btnClass} title={t('tooltips.control_mods')} onClick={onOpenMods}>
                 <Puzzle className={`${iconClass} text-hyamber`} />
                 <span className={labelClass}>{t('management.mods')}</span>
+            </button>
+            <button className={btnClass} title="Configurações" onClick={onOpenSettings}>
+                <Settings className={iconClass} />
+                <span className={labelClass}>Ajustes</span>
             </button>
             <button className={btnClass} title={t('tooltips.open_folder')} onClick={handleOpenFolder}>
                 <FolderOpen className={iconClass} />
