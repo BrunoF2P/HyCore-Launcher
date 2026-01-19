@@ -1,15 +1,19 @@
 import "./App.css";
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ActionBar } from "./shared/components/Layout/ActionBar";
 import { ManagementMenu } from "./features/game/components/ManagementMenu";
 import { NewsSection } from "./features/news/components/NewsSection";
 import { UpdateOverlay } from "./features/game/components/UpdateOverlay";
 import { useGameStore } from "./features/game/store/useGameStore";
-import { ModsPage } from "./features/mods";
 import { useLauncherStore } from "./features/system/store/useLauncherStore";
+import { Suspense, lazy } from "react";
+
+const ModsPage = lazy(() => import("./features/mods/ModsLayout"));
 
 function App() {
+  const { t } = useTranslation();
   const [view, setView] = useState<'dashboard' | 'mods'>('dashboard');
   const checkForUpdates = useGameStore((state) => state.checkForUpdates);
   const checkSelfUpdate = useLauncherStore((state) => state.checkSelfUpdate);
@@ -34,7 +38,7 @@ function App() {
             <div className="relative flex flex-col gap-5 ml-10">
               <img
                 src="/logo.png"
-                alt="Hytale Logo"
+                alt={t('common.logo_alt')}
                 className="h-24 drop-shadow-xl absolute bottom-full left-0 mb-6"
               />
               <NewsSection />
@@ -43,8 +47,10 @@ function App() {
           <ActionBar />
         </>
       ) : (
-        <div className="absolute inset-0 z-20 bg-[#121418]">
-          <ModsPage onBack={() => setView('dashboard')} />
+        <div className="absolute inset-0 z-20 bg-[#0c0f16]">
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-white/20">Carregando Mods...</div>}>
+            <ModsPage onBack={() => setView('dashboard')} />
+          </Suspense>
         </div>
       )}
     </div>
