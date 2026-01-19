@@ -7,10 +7,11 @@ interface ModLibraryProps {
     mods: InstalledMod[];
     onToggle: (mod: InstalledMod, enabled: boolean) => void;
     onRemove: (mod: InstalledMod) => void;
+    onUpdate: (mod: InstalledMod) => void;
     isLoading: boolean;
 }
 
-export default function ModLibrary({ mods, onToggle, onRemove, isLoading }: ModLibraryProps) {
+export default function ModLibrary({ mods, onToggle, onRemove, onUpdate, isLoading }: ModLibraryProps) {
     const { t } = useTranslation();
 
     if (mods.length === 0 && !isLoading) {
@@ -39,6 +40,7 @@ export default function ModLibrary({ mods, onToggle, onRemove, isLoading }: ModL
                             isInstalled={true}
                             onToggle={onToggle}
                             onRemove={onRemove}
+                            onUpdate={onUpdate}
                         />
                     ))}
                 </div>

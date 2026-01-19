@@ -1,5 +1,5 @@
 import { CurseForgeMod, InstalledMod } from './types';
-import { Download, Trash2, Check, X, Calendar } from 'lucide-react';
+import { Download, Trash2, Check, X, Calendar, ArrowUpCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface ModCardProps {
@@ -8,10 +8,14 @@ interface ModCardProps {
     onInstall?: (mod: CurseForgeMod) => void;
     onRemove?: (mod: InstalledMod) => void;
     onToggle?: (mod: InstalledMod, enabled: boolean) => void;
+    onUpdate?: (mod: InstalledMod) => void;
     isLoading?: boolean;
+    onClick?: () => void;
 }
 
-export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggle, isLoading }: ModCardProps) {
+import { memo } from 'react';
+
+const ModCard = memo(function ModCard({ mod, isInstalled, onInstall, onRemove, onToggle, onUpdate, isLoading, onClick }: ModCardProps) {
     const { t } = useTranslation();
     // Helper type guards
     const isCF = (m: any): m is CurseForgeMod => 'latestFiles' in m;
@@ -21,6 +25,7 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
     const description = isCF(mod) ? mod.summary : mod.description;
     const author = isCF(mod) ? (mod.authors[0]?.name || 'Unknown') : mod.author;
     const downloads = isCF(mod) ? mod.downloadCount : mod.downloads;
+    const hasUpdate = isInst(mod) && mod.latestFileId !== null && mod.latestFileId !== undefined;
 
     // Format downloads
     const formatDownloads = (num?: number) => {
@@ -31,7 +36,17 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
     };
 
     return (
-        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all flex flex-col h-full group relative overflow-hidden">
+        <div
+            onClick={onClick}
+            className={`bg-white/5 backdrop-blur-sm border rounded-xl p-4 hover:border-white/20 transition-all flex flex-col h-full group relative overflow-hidden cursor-pointer ${hasUpdate ? 'border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'border-white/10'
+                }`}
+        >
+            {hasUpdate && (
+                <div className="absolute top-2 right-2 z-20 flex items-center gap-1 bg-amber-500 text-black text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full shadow-lg">
+                    <ArrowUpCircle size={10} /> Update
+                </div>
+            )}
+
             {/* Glossy overlay effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
@@ -41,7 +56,7 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
                         <img src={thumbnail} alt={mod.name} className="w-full h-full object-cover" />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center text-white/20">
-                            <span className="text-xs">No Icon</span>
+                            <span className="text-xs">{t('mods.no_icon')}</span>
                         </div>
                     )}
                 </div>
@@ -53,6 +68,7 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
                     <div className="flex items-center gap-2 text-[10px] text-white/40">
                         <span className="flex items-center gap-1"><Download size={8} /> {formatDownloads(downloads)}</span>
                         {isCF(mod) && <span className="flex items-center gap-1"><Calendar size={8} /> {new Date(mod.dateModified).toLocaleDateString()}</span>}
+                        {isInst(mod) && <span className="bg-white/5 px-1.5 rounded-md">v{mod.version}</span>}
                     </div>
                 </div>
             </div>
@@ -64,19 +80,29 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
             <div className="mt-auto flex gap-2 relative z-10">
                 {isInstalled && isInst(mod) ? (
                     <>
+                        {hasUpdate ? (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onUpdate?.(mod); }}
+                                disabled={isLoading}
+                                className="flex-[2] flex items-center justify-center gap-2 py-2 bg-amber-500 text-black rounded-lg text-sm font-black uppercase tracking-wider hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20"
+                            >
+                                <ArrowUpCircle size={14} /> Update to {mod.latestVersion}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onToggle?.(mod, !mod.enabled); }}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${mod.enabled
+                                    ? 'bg-sky-500/20 text-sky-400 hover:bg-sky-500/30'
+                                    : 'bg-white/5 text-white/50 hover:bg-white/10'
+                                    }`}
+                            >
+                                {mod.enabled ? <><Check size={12} /> {t('mods.enabled')}</> : <><X size={12} /> {t('mods.disabled')}</>}
+                            </button>
+                        )}
                         <button
-                            onClick={() => onToggle?.(mod, !mod.enabled)}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${mod.enabled
-                                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                : 'bg-white/5 text-white/50 hover:bg-white/10'
-                                }`}
-                        >
-                            {mod.enabled ? <><Check size={12} /> {t('mods.enabled')}</> : <><X size={12} /> {t('mods.disabled')}</>}
-                        </button>
-                        <button
-                            onClick={() => onRemove?.(mod)}
+                            onClick={(e) => { e.stopPropagation(); onRemove?.(mod); }}
                             disabled={isLoading}
-                            className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors disabled:opacity-50"
+                            className={`px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors disabled:opacity-50 ${hasUpdate ? 'flex-1' : ''}`}
                             title={t('tooltips.uninstall')}
                         >
                             <Trash2 size={14} />
@@ -88,7 +114,7 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
                         disabled={isLoading || isInstalled} // Could happen if ID check matches
                         className={`w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isInstalled
                             ? 'bg-white/5 text-white/30 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)] text-white'
+                            : 'bg-gradient-to-r from-sky-500 to-blue-500 text-white hover:brightness-110'
                             }`}
                     >
                         {isLoading ? (
@@ -103,6 +129,8 @@ export default function ModCard({ mod, isInstalled, onInstall, onRemove, onToggl
             </div>
         </div>
     );
-}
+});
+
+export default ModCard;
 
 

@@ -96,3 +96,9 @@ export interface SearchModsParams {
     pageSize?: number;
     index?: number;
 }
+
+export interface Modpack {
+    name: string;
+    modCount: number;
+    createdAt: string;
+}
