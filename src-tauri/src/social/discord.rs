@@ -13,10 +13,7 @@ pub fn init_discord() {
     }
 
     log::info!("Initializing Discord RPC...");
-    // Using a placeholder Client ID.
-    // If it's a Result, we unwrap. If it's not, we just assign.
-    // Based on previous error, it seems it's NOT a result.
-    let mut client = DiscordIpcClient::new("1200000000000000000");
+    let mut client = DiscordIpcClient::new("1461306150497550376");
 
     if let Err(e) = client.connect() {
         log::warn!(
