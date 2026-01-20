@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ChevronRight, LayoutGrid } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useModStore } from "../store/useModStore";
 
 interface CategorySidebarProps {
@@ -8,6 +9,7 @@ interface CategorySidebarProps {
 }
 
 export const CategorySidebar = ({ onSelectCategory, activeCategoryId }: CategorySidebarProps) => {
+    const { t } = useTranslation();
     const { categories, fetchCategories } = useModStore();
     const [isLoading, setIsLoading] = useState(true);
 
@@ -28,7 +30,7 @@ export const CategorySidebar = ({ onSelectCategory, activeCategoryId }: Category
     return (
         <aside className="w-64 flex flex-col gap-1 p-4 overflow-y-auto custom-scrollbar bg-black/20 border-r border-white/5 h-full">
             <h3 className="text-[10px] uppercase font-bold tracking-widest text-white/30 px-3 mb-2 flex items-center justify-between">
-                Categorias
+                {t('mods.categories')}
             </h3>
 
             <button
@@ -40,7 +42,7 @@ export const CategorySidebar = ({ onSelectCategory, activeCategoryId }: Category
             >
                 <div className="flex items-center gap-3">
                     <LayoutGrid size={16} className={!activeCategoryId ? "text-sky-400" : "opacity-50"} />
-                    <span className="text-xs">Todos os Mods</span>
+                    <span className="text-xs">{t('mods.all_mods')}</span>
                 </div>
                 {!activeCategoryId && <ChevronRight className="w-3 h-3" />}
             </button>

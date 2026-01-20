@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Puzzle, FolderOpen, Trash2, ShieldX, Settings } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { ask, message } from "@tauri-apps/plugin-dialog";
 
 interface ManagementMenuProps {
     onOpenMods?: () => void;
@@ -23,10 +24,15 @@ export const ManagementMenu = ({ onOpenMods, onOpenSettings }: ManagementMenuPro
     };
 
     const handleClearData = async () => {
-        if (confirm(t('management.confirm_clear'))) {
+        const confirmed = await ask(t('management.confirm_clear'), {
+            title: t('management.clear'),
+            kind: 'warning'
+        });
+
+        if (confirmed) {
             try {
                 await invoke("wipe_game_data");
-                alert(t('management.clear_success'));
+                await message(t('management.clear_success'), { title: 'HyCore' });
             } catch (error) {
                 console.error("Failed to clear data:", error);
             }
@@ -34,14 +40,19 @@ export const ManagementMenu = ({ onOpenMods, onOpenSettings }: ManagementMenuPro
     };
 
     const handleUninstall = async () => {
-        if (confirm(t('management.confirm_uninstall'))) {
+        const confirmed = await ask(t('management.confirm_uninstall'), {
+            title: t('management.remove'),
+            kind: 'warning'
+        });
+
+        if (confirmed) {
             try {
                 await invoke("uninstall_game");
-                alert(t('management.uninstall_success'));
+                await message(t('management.uninstall_success'), { title: 'HyCore' });
                 window.location.reload();
             } catch (error) {
                 console.error("Failed to uninstall:", error);
-                alert(t('management.uninstall_failed') + ": " + error);
+                await message(`${t('management.uninstall_failed')}: ${error}`, { title: 'Error', kind: 'error' });
             }
         }
     };

@@ -102,7 +102,7 @@ const ModCard = memo(function ModCard({ mod, isInstalled, onInstall, onRemove, o
                         <button
                             onClick={(e) => { e.stopPropagation(); onRemove?.(mod); }}
                             disabled={isLoading}
-                            className={`px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors disabled:opacity-50 ${hasUpdate ? 'flex-1' : ''}`}
+                            className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors disabled:opacity-50"
                             title={t('tooltips.uninstall')}
                         >
                             <Trash2 size={14} />

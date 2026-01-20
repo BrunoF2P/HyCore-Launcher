@@ -5,6 +5,7 @@
         "clear": "Limpar",
         "remove": "Remover",
         "confirm_clear": "Tem certeza que deseja apagar os dados? Isso removerá configurações, contas salvas e arquivos de usuário.",
+        "clear_success": "Dados limpos com sucesso!",
         "confirm_uninstall": "Tem certeza que deseja desinstalar? Isso apagará permanentemente a pasta do jogo e o Java runtime.",
         "uninstall_success": "HyCore foi desinstalado com sucesso.",
         "profile": "Perfil",
@@ -33,6 +34,7 @@
     "mods": {
         "title": "Mods",
         "library": "Biblioteca",
+        "profiles": "Perfis",
         "browse": "Explorar CurseForge",
         "search_placeholder": "Buscar mods...",
         "filters": "Filtros",
@@ -65,7 +67,9 @@
         "install_failed": "Falha ao instalar mod",
         "remove_failed": "Falha ao remover mod",
         "toggle_failed": "Falha ao alterar estado do mod",
-        "active_profile": "Perfil Ativo"
+        "active_profile": "Perfil Ativo",
+        "categories": "Categorias",
+        "all_mods": "Todos os Mods"
     },
     "news": {
         "latest_updates": "Últimas Atualizações",
@@ -114,10 +118,28 @@
         "uninstall": "Desinstalar",
         "github": "Repositório GitHub",
         "report_issue": "Reportar Problema",
-        "settings": "Configurações"
+        "settings": "Configurações",
+        "check_updates": "Verificar atualizações agora"
     },
     "self_update": {
         "title": "Atualização do Launcher",
         "message": "Uma nova versão do launcher {{version}} está disponível! Deseja atualizar agora?"
+    },
+    "profiles": {
+        "title": "Perfis de Mods",
+        "subtitle": "Crie instâncias separadas para diferentes estilos de jogo.",
+        "placeholder": "Nome do perfil...",
+        "create_snapshot": "Snapshot",
+        "create_empty": "Vazio",
+        "tooltip_snapshot": "Cria uma cópia do seu estado atual",
+        "tooltip_empty": "Cria um perfil limpo sem mods",
+        "active_label": "Ativo Agora",
+        "mods_count": "{{count}} Mods",
+        "btn_activating": "Ativando...",
+        "btn_active": "Perfil Ativo",
+        "btn_activate": "Ativar Perfil",
+        "confirm_delete": "Deseja excluir o perfil \"{{name}}\"?",
+        "error_create": "Erro ao criar perfil: ",
+        "error_activate": "Erro ao ativar perfil: "
     }
 }

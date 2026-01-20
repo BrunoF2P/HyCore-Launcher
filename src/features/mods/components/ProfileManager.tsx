@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { Plus, Package, Calendar, ArrowRight, Trash2, CheckCircle2, FilePlus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useModStore } from "../store/useModStore";
 
 export const ProfileManager = () => {
+    const { t } = useTranslation();
     const {
         profiles,
         activeProfile,
@@ -29,7 +31,7 @@ export const ProfileManager = () => {
             await createProfile(newProfileName, empty);
             setNewProfileName("");
         } catch (error) {
-            alert("Erro ao criar perfil: " + error);
+            alert(t('profiles.error_create') + error);
         } finally {
             setIsCreating(false);
         }
@@ -37,7 +39,7 @@ export const ProfileManager = () => {
 
     const handleDelete = async (name: string) => {
         if (name === "Default") return;
-        if (!confirm(`Deseja excluir o perfil "${name}"?`)) return;
+        if (!confirm(t('profiles.confirm_delete', { name }))) return;
         try {
             await deleteProfile(name);
         } catch (error) {
@@ -51,7 +53,7 @@ export const ProfileManager = () => {
         try {
             await setActiveProfile(name);
         } catch (error) {
-            alert("Erro ao ativar perfil: " + error);
+            alert(t('profiles.error_activate') + error);
         } finally {
             setSwitchingPack(null);
         }
@@ -61,15 +63,15 @@ export const ProfileManager = () => {
         <div className="p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h2 className="text-3xl font-black tracking-tight uppercase px-1 bg-gradient-to-r from-sky-400 to-blue-400 bg-clip-text text-transparent">Perfis de Mods</h2>
-                    <p className="text-white/40 text-sm mt-1">Crie instâncias separadas para diferentes estilos de jogo.</p>
+                    <h2 className="text-3xl font-black tracking-tight uppercase px-1 bg-gradient-to-r from-sky-400 to-blue-400 bg-clip-text text-transparent">{t('profiles.title')}</h2>
+                    <p className="text-white/40 text-sm mt-1">{t('profiles.subtitle')}</p>
                 </div>
 
                 <div className="flex flex-col gap-2">
                     <div className="flex gap-2 bg-white/5 p-1.5 rounded-2xl border border-white/5 backdrop-blur-xl">
                         <input
                             type="text"
-                            placeholder="Nome do perfil..."
+                            placeholder={t('profiles.placeholder')}
                             value={newProfileName}
                             onChange={(e) => setNewProfileName(e.target.value)}
                             className="bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-sky-500/50 transition-all w-48 md:w-64"
@@ -78,19 +80,19 @@ export const ProfileManager = () => {
                             onClick={() => handleCreate(false)}
                             disabled={isCreating || !newProfileName.trim()}
                             className="flex items-center gap-2 bg-sky-500 text-black px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider hover:bg-sky-400 disabled:opacity-30 transition-all whitespace-nowrap cursor-pointer"
-                            title="Cria uma cópia do seu estado atual"
+                            title={t('profiles.tooltip_snapshot')}
                         >
                             <Plus size={16} />
-                            Snapshot
+                            {t('profiles.create_snapshot')}
                         </button>
                         <button
                             onClick={() => handleCreate(true)}
                             disabled={isCreating || !newProfileName.trim()}
                             className="flex items-center gap-2 bg-white/10 text-white px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider hover:bg-white/20 disabled:opacity-30 transition-all whitespace-nowrap cursor-pointer"
-                            title="Cria um perfil limpo sem mods"
+                            title={t('profiles.tooltip_empty')}
                         >
                             <FilePlus size={16} />
-                            Vazio
+                            {t('profiles.create_empty')}
                         </button>
                     </div>
                 </div>
@@ -107,7 +109,7 @@ export const ProfileManager = () => {
                     >
                         {activeProfile === pack.name && (
                             <div className="absolute -top-3 left-6 bg-sky-500 text-black text-[9px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full shadow-lg shadow-sky-500/20">
-                                Ativo Agora
+                                {t('profiles.active_label')}
                             </div>
                         )}
 
@@ -131,7 +133,7 @@ export const ProfileManager = () => {
                         <h3 className="text-xl font-bold mb-1 group-hover:text-sky-400 transition-colors">{pack.name}</h3>
                         <div className="flex items-center gap-3 text-white/40 text-[10px] uppercase font-bold tracking-widest mb-8">
                             <span className="bg-white/5 px-2 py-0.5 rounded-md text-sky-400/80">
-                                {pack.modCount} Mods
+                                {t('profiles.mods_count', { count: pack.modCount })}
                             </span>
                             <div className="h-1 w-1 rounded-full bg-white/10" />
                             <span className="flex items-center gap-1.5 opacity-60">
@@ -153,16 +155,16 @@ export const ProfileManager = () => {
                             {switchingPack === pack.name ? (
                                 <>
                                     <div className="w-4 h-4 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                                    Ativando...
+                                    {t('profiles.btn_activating')}
                                 </>
                             ) : activeProfile === pack.name ? (
                                 <>
                                     <CheckCircle2 size={14} />
-                                    Perfil Ativo
+                                    {t('profiles.btn_active')}
                                 </>
                             ) : (
                                 <>
-                                    Ativar Perfil
+                                    {t('profiles.btn_activate')}
                                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                                 </>
                             )}

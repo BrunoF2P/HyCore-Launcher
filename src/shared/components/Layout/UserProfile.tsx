@@ -120,7 +120,7 @@ export const UserProfile = () => {
                         onClick={handleManualUpdateCheck}
                         disabled={isCheckingUpdates}
                         className={`p-1 hover:bg-white/5 rounded-full transition-all cursor-pointer ${isCheckingUpdates ? 'opacity-100' : 'opacity-30 hover:opacity-100'}`}
-                        title="Verificar atualizações agora"
+                        title={t('tooltips.check_updates')}
                     >
                         <RefreshCw className={`w-3 h-3 text-zinc-400 ${isCheckingUpdates ? 'animate-spin text-hyamber' : ''}`} />
                     </button>

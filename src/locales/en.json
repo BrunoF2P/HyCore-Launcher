@@ -5,6 +5,7 @@
         "clear": "Clear",
         "remove": "Remove",
         "confirm_clear": "Are you sure you want to clear data? This will remove settings, saved accounts, and user files.",
+        "clear_success": "Data cleared successfully!",
         "confirm_uninstall": "Are you sure you want to uninstall? This will permanently delete the game folder and Java runtime.",
         "uninstall_success": "HyCore has been successfully uninstalled.",
         "profile": "Profile",
@@ -33,6 +34,7 @@
     "mods": {
         "title": "Mods",
         "library": "Library",
+        "profiles": "Profiles",
         "browse": "Browse CurseForge",
         "search_placeholder": "Search mods...",
         "filters": "Filters",
@@ -65,7 +67,9 @@
         "install_failed": "Failed to install mod",
         "remove_failed": "Failed to remove mod",
         "toggle_failed": "Failed to toggle mod",
-        "active_profile": "Active Profile"
+        "active_profile": "Active Profile",
+        "categories": "Categories",
+        "all_mods": "All Mods"
     },
     "news": {
         "latest_updates": "Latest Updates",
@@ -114,10 +118,28 @@
         "uninstall": "Uninstall",
         "github": "GitHub Repository",
         "report_issue": "Report Issue",
-        "settings": "Settings"
+        "settings": "Settings",
+        "check_updates": "Check for updates"
     },
     "self_update": {
         "title": "Launcher Update",
         "message": "A new launcher version {{version}} is available! Do you want to update now?"
+    },
+    "profiles": {
+        "title": "Mod Profiles",
+        "subtitle": "Create separate instances for different playstyles.",
+        "placeholder": "Profile name...",
+        "create_snapshot": "Snapshot",
+        "create_empty": "Empty",
+        "tooltip_snapshot": "Creates a copy of your current state",
+        "tooltip_empty": "Creates a clean profile without mods",
+        "active_label": "Active Now",
+        "mods_count": "{{count}} Mods",
+        "btn_activating": "Activating...",
+        "btn_active": "Active Profile",
+        "btn_activate": "Activate Profile",
+        "confirm_delete": "Do you want to delete profile \"{{name}}\"?",
+        "error_create": "Error creating profile: ",
+        "error_activate": "Error activating profile: "
     }
 }

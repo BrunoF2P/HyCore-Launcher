@@ -79,7 +79,7 @@ export default function ModsPage({ onBack }: ModsPageProps) {
                                 : 'text-white/50 hover:text-white hover:bg-white/5'
                                 }`}
                         >
-                            <Package size={18} /> Perfis
+                            <Package size={18} /> {t('mods.profiles')}
                         </button>
                     </nav>
                 </div>
