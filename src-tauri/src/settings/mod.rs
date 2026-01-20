@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::updater::env::get_hycore_data_dir;
 use std::fs;
 pub mod types;
@@ -19,10 +20,11 @@ pub fn load_settings() -> GameSettings {
     GameSettings::default()
 }
 
-pub fn save_settings(settings: &GameSettings) -> Result<(), String> {
+pub fn save_settings(settings: &GameSettings) -> anyhow::Result<()> {
     let path = get_settings_path();
-    let content = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(path, content).map_err(|e| e.to_string())
+    let content = serde_json::to_string_pretty(settings)?;
+    fs::write(path, content)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -31,6 +33,8 @@ pub fn get_game_settings() -> GameSettings {
 }
 
 #[tauri::command]
-pub fn set_game_settings(settings: GameSettings) -> Result<(), String> {
-    save_settings(&settings)
+pub fn set_game_settings(settings: GameSettings) -> Result<(), AppError> {
+    save_settings(&settings)?;
+    crate::social::discord::set_rpc_enabled(settings.discord_rpc_enabled);
+    Ok(())
 }

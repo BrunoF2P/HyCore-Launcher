@@ -1,140 +1,65 @@
+use crate::error::AppError;
 use crate::updater::env::{get_game_dir, get_jre_dir, get_user_data_dir};
 use std::fs;
-use std::process::Command;
+use tauri_plugin_opener::OpenerExt;
 
 pub mod info;
 
 #[tauri::command]
-pub async fn open_url(url: String) -> Result<(), String> {
+pub async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), AppError> {
     log::info!("Opening URL: {}", url);
-    #[cfg(target_os = "linux")]
-    {
-        Command::new("xdg-open").arg(&url).spawn().map_err(|e| {
-            let err_msg = format!("Failed to open URL: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .arg("/C")
-            .arg("start")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| {
-                let err_msg = format!("Failed to open URL: {}", e);
-                log::error!("{}", err_msg);
-                err_msg
-            })?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open").arg(&url).spawn().map_err(|e| {
-            let err_msg = format!("Failed to open URL: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
-    }
-
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| AppError::Unknown(e.to_string()))?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn open_game_folder() -> Result<(), String> {
+pub async fn open_game_folder(app: tauri::AppHandle) -> Result<(), AppError> {
     let path = get_game_dir();
     log::info!("Opening game folder: {:?}", path);
 
     if !path.exists() {
         log::info!("Creating game folder: {:?}", path);
-        fs::create_dir_all(&path).map_err(|e| {
-            let err_msg = e.to_string();
-            log::error!("Failed to create game folder: {}", err_msg);
-            err_msg
-        })?;
+        fs::create_dir_all(&path).map_err(|e| AppError::DirCreation(e.to_string()))?;
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        Command::new("xdg-open").arg(&path).spawn().map_err(|e| {
-            let err_msg = format!("Failed to open folder: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("explorer").arg(&path).spawn().map_err(|e| {
-            let err_msg = format!("Failed to open folder: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open").arg(&path).spawn().map_err(|e| {
-            let err_msg = format!("Failed to open folder: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
-    }
-
+    let path_str = path.to_string_lossy().to_string();
+    app.opener()
+        .open_path(path_str, None::<&str>)
+        .map_err(|e| AppError::Unknown(e.to_string()))?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn wipe_game_data() -> Result<(), String> {
+pub async fn wipe_game_data() -> Result<(), AppError> {
     let path = get_user_data_dir();
     log::info!("Wiping game data at {:?}", path);
     if path.exists() {
-        fs::remove_dir_all(&path).map_err(|e| {
-            let err_msg = format!("Failed to wipe data: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
+        fs::remove_dir_all(&path).map_err(AppError::Io)?;
     }
     log::info!("Game data wipe complete");
     Ok(())
 }
 
 #[tauri::command]
-pub async fn uninstall_game() -> Result<(), String> {
+pub async fn uninstall_game() -> Result<(), AppError> {
     let game_dir = get_game_dir();
     let jre_dir = get_jre_dir();
-    let version_file = crate::updater::env::get_hycore_data_dir().join("version.txt");
 
     log::info!("Uninstalling game...");
 
     if game_dir.exists() {
         log::info!("Removing game directory: {:?}", game_dir);
-        fs::remove_dir_all(&game_dir).map_err(|e| {
-            let err_msg = format!("Failed to remove game dir: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
+        fs::remove_dir_all(&game_dir).map_err(AppError::Io)?;
     }
 
     if jre_dir.exists() {
         log::info!("Removing JRE directory: {:?}", jre_dir);
-        fs::remove_dir_all(&jre_dir).map_err(|e| {
-            let err_msg = format!("Failed to remove JRE dir: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
+        fs::remove_dir_all(&jre_dir).map_err(AppError::Io)?;
     }
 
-    if version_file.exists() {
-        log::info!("Removing version file: {:?}", version_file);
-        fs::remove_file(&version_file).map_err(|e| {
-            let err_msg = format!("Failed to remove version file: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
-    }
+    crate::updater::cleanup::remove_version_files().map_err(AppError::from)?;
 
     log::info!("Uninstallation complete");
 

@@ -1,6 +1,10 @@
+pub mod error;
+use error::AppError;
 mod game;
+pub mod http;
 mod mods;
 mod news;
+pub mod platform;
 mod player;
 pub mod settings;
 pub mod social;
@@ -11,7 +15,7 @@ mod updater;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tauri::command]
-async fn get_news() -> Result<Vec<news::NewsItem>, String> {
+async fn get_news() -> Result<Vec<news::NewsItem>, AppError> {
     log::info!("Fetching news...");
     match news::fetch_news().await {
         Ok(items) => {
@@ -20,13 +24,13 @@ async fn get_news() -> Result<Vec<news::NewsItem>, String> {
         }
         Err(e) => {
             log::warn!("Failed to fetch news from server, loading cache: {}", e);
-            news::load_cache()
+            news::load_cache().map_err(AppError::from)
         }
     }
 }
 
 #[tauri::command]
-async fn check_update_requirements() -> Result<updater::SystemRequirements, String> {
+async fn check_update_requirements() -> Result<updater::SystemRequirements, AppError> {
     log::info!("Checking update requirements...");
     let reqs = updater::check_system_requirements().await;
     log::info!(
@@ -37,7 +41,7 @@ async fn check_update_requirements() -> Result<updater::SystemRequirements, Stri
 }
 
 #[tauri::command]
-async fn check_for_game_update() -> Result<(bool, u32), String> {
+async fn check_for_game_update() -> Result<(bool, u32), AppError> {
     log::info!("Checking for game update...");
     match updater::is_update_available().await {
         Ok(res) => {
@@ -52,7 +56,7 @@ async fn check_for_game_update() -> Result<(bool, u32), String> {
 }
 
 #[tauri::command]
-async fn start_game_update(window: tauri::Window) -> Result<(), String> {
+async fn start_game_update(window: tauri::Window) -> Result<(), AppError> {
     log::info!("Starting game update process...");
     match updater::run_update(window).await {
         Ok(_) => {
@@ -69,7 +73,7 @@ async fn start_game_update(window: tauri::Window) -> Result<(), String> {
 #[tauri::command]
 async fn search_mods_cf(
     params: mods::api::SearchModsParams,
-) -> Result<mods::types::SearchResult, String> {
+) -> Result<mods::types::SearchResult, AppError> {
     log::info!("Searching mods with params: {:?}", params);
     match mods::api::search_mods(params).await {
         Ok(res) => {
@@ -84,7 +88,7 @@ async fn search_mods_cf(
 }
 
 #[tauri::command]
-async fn get_installed_mods() -> Result<Vec<mods::types::Mod>, String> {
+async fn get_installed_mods() -> Result<Vec<mods::types::Mod>, AppError> {
     log::info!("Fetching installed mods...");
     match mods::operations::get_installed_mods() {
         Ok(mods_list) => {
@@ -103,7 +107,7 @@ async fn install_mod_cf(
     window: tauri::Window,
     mod_id: i32,
     file_id: Option<i32>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     log::info!("Installing mod_id: {:?}, file_id: {:?}", mod_id, file_id);
     match mods::operations::install_mod_by_id(window, mod_id, file_id).await {
         Ok(_) => {
@@ -118,7 +122,7 @@ async fn install_mod_cf(
 }
 
 #[tauri::command]
-async fn remove_mod(mod_id: String) -> Result<(), String> {
+async fn remove_mod(mod_id: String) -> Result<(), AppError> {
     log::info!("Removing mod: {}", mod_id);
     match mods::operations::remove_mod(mod_id) {
         Ok(_) => {
@@ -133,7 +137,7 @@ async fn remove_mod(mod_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), String> {
+async fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), AppError> {
     log::info!("Toggling mod {} (enabled={})", mod_id, enabled);
     match mods::operations::toggle_mod(mod_id, enabled) {
         Ok(_) => {

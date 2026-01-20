@@ -3,12 +3,19 @@ use super::manifest::{
 };
 use super::operations::{install_mod_by_id, toggle_mod};
 use super::types::{ModManifest, Modpack};
+use crate::error::AppError;
+use once_cell::sync::Lazy;
 use std::fs;
 use std::path::Path;
 use tauri::Window;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use tokio::sync::Mutex;
+
+static PROFILE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 #[tauri::command]
-pub fn create_profile(name: String, empty: bool) -> Result<(), String> {
+pub async fn create_profile(name: String, empty: bool) -> Result<(), AppError> {
+    let _guard = PROFILE_LOCK.lock().await;
     log::info!("Creating new profile: {} (empty={})", name, empty);
     let profiles_dir = get_modpacks_dir();
     fs::create_dir_all(&profiles_dir).map_err(|e| {
@@ -20,7 +27,7 @@ pub fn create_profile(name: String, empty: bool) -> Result<(), String> {
     let pack_path = profiles_dir.join(format!("{}.json", name));
     if pack_path.exists() {
         log::error!("Failed to create profile: {} already exists", name);
-        return Err("Profile already exists".to_string());
+        return Err(AppError::Unknown("Profile already exists".to_string()));
     }
 
     let manifest = if empty {
@@ -48,17 +55,20 @@ pub fn create_profile(name: String, empty: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_profiles() -> Result<Vec<Modpack>, String> {
+pub async fn list_profiles() -> Result<Vec<Modpack>, AppError> {
+    let _guard = PROFILE_LOCK.lock().await;
     log::info!("Listing available profiles...");
     let profiles_dir = get_modpacks_dir();
     if !profiles_dir.exists() {
         // Create default if nothing exists
         log::info!("Profiles directory not found, creating Default profile");
-        let _ = create_profile("Default".to_string(), true);
+        let _ = create_profile("Default".to_string(), true).await;
         return Ok(vec![Modpack {
             name: "Default".to_string(),
             mod_count: 0,
-            created_at: chrono::Local::now().to_rfc3339(),
+            created_at: OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .unwrap_or_default(),
         }]);
     }
 
@@ -85,20 +95,27 @@ pub fn list_profiles() -> Result<Vec<Modpack>, String> {
                 .or_else(|_| metadata.modified())
                 .unwrap_or_else(|_| std::time::SystemTime::now());
 
-            let dt: chrono::DateTime<chrono::Local> = created_at.into();
+            let dt = OffsetDateTime::from(created_at);
 
             packs.push(Modpack {
                 name,
                 mod_count: manifest.mods.len(),
-                created_at: dt.to_rfc3339(),
+                created_at: dt.format(&Rfc3339).unwrap_or_default(),
             });
         }
     }
 
     if packs.is_empty() {
         log::info!("No profile files found, creating Default profile");
-        let _ = create_profile("Default".to_string(), true);
-        return list_profiles();
+        let _ = create_profile("Default".to_string(), true).await;
+        let _ = create_profile("Default".to_string(), true).await;
+        return Ok(vec![Modpack {
+            name: "Default".to_string(),
+            mod_count: 0,
+            created_at: OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .unwrap_or_default(),
+        }]);
     }
 
     log::info!("Found {} profiles", packs.len());
@@ -106,7 +123,8 @@ pub fn list_profiles() -> Result<Vec<Modpack>, String> {
 }
 
 #[tauri::command]
-pub async fn set_active_profile(window: Window, name: String) -> Result<(), String> {
+pub async fn set_active_profile(window: Window, name: String) -> Result<(), AppError> {
+    let _guard = PROFILE_LOCK.lock().await;
     log::info!("Setting active profile to: {}", name);
     let pack_path = get_modpacks_dir().join(format!("{}.json", name));
     if !pack_path.exists() {
@@ -115,7 +133,7 @@ pub async fn set_active_profile(window: Window, name: String) -> Result<(), Stri
             name,
             pack_path
         );
-        return Err("Profile not found".to_string());
+        return Err(AppError::ProfileNotFound(name));
     }
 
     // 1. Disable all currently active mods from the current profile
@@ -136,18 +154,18 @@ pub async fn set_active_profile(window: Window, name: String) -> Result<(), Stri
     sync_profile(window, name).await
 }
 
-pub async fn sync_profile(window: Window, name: String) -> Result<(), String> {
+pub async fn sync_profile(window: Window, name: String) -> Result<(), AppError> {
     log::info!("Syncing profile: {}", name);
     let pack_path = get_modpacks_dir().join(format!("{}.json", name));
     let data = fs::read(&pack_path).map_err(|e| {
         let err_msg = format!("Failed to read target profile {:?}: {}", pack_path, e);
         log::error!("{}", err_msg);
-        err_msg
+        AppError::from(err_msg)
     })?;
     let target_manifest: ModManifest = serde_json::from_slice(&data).map_err(|e| {
         let err_msg = format!("Failed to parse target profile {:?}: {}", pack_path, e);
         log::error!("{}", err_msg);
-        err_msg
+        AppError::from(err_msg)
     })?;
 
     // Iterate through the target profile's mods and ensure local files match its state
@@ -196,11 +214,14 @@ pub async fn sync_profile(window: Window, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn delete_profile(name: String) -> Result<(), String> {
+pub async fn delete_profile(name: String) -> Result<(), AppError> {
+    let _guard = PROFILE_LOCK.lock().await;
     log::info!("Deleting profile: {}", name);
     if name == "Default" {
         log::error!("Attempted to delete protected 'Default' profile");
-        return Err("Cannot delete Default profile".to_string());
+        return Err(AppError::Unknown(
+            "Cannot delete Default profile".to_string(),
+        ));
     }
 
     if get_active_profile() == name {
@@ -213,7 +234,7 @@ pub fn delete_profile(name: String) -> Result<(), String> {
         fs::remove_file(&pack_path).map_err(|e| {
             let err_msg = format!("Failed to delete profile file at {:?}: {}", pack_path, e);
             log::error!("{}", err_msg);
-            err_msg
+            AppError::from(err_msg)
         })?;
         log::info!("Profile file deleted: {:?}", pack_path);
     } else {

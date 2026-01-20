@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use super::env::get_hycore_data_dir;
 use super::types::SystemRequirements;
@@ -17,17 +16,11 @@ pub async fn check_system_requirements() -> SystemRequirements {
 
     let free_space_gb = free_space_bytes / (1024 * 1024 * 1024);
 
-    let has_internet = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
-        .build()
-    {
-        Ok(client) => client
-            .head("https://game-patches.hytale.com")
-            .send()
-            .await
-            .is_ok(),
-        Err(_) => false,
-    };
+    let has_internet = crate::http::HTTP_CLIENT
+        .head("https://game-patches.hytale.com")
+        .send()
+        .await
+        .is_ok();
 
     SystemRequirements {
         has_internet,
@@ -49,7 +42,7 @@ pub fn get_butler_path() -> PathBuf {
     path
 }
 
-pub async fn ensure_butler(window: &tauri::Window) -> Result<PathBuf, String> {
+pub async fn ensure_butler(window: &tauri::Window) -> anyhow::Result<PathBuf> {
     use super::types::UpdateStatus;
     use tauri::Emitter;
 
@@ -67,25 +60,19 @@ pub async fn ensure_butler(window: &tauri::Window) -> Result<PathBuf, String> {
         },
     );
 
-    let os = if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "darwin"
-    } else {
-        "linux"
-    };
+    let os = crate::platform::get_butler_os();
 
     let url = format!(
         "https://broth.itch.zone/butler/{}-amd64/LATEST/archive/default",
         os
     );
 
-    let response = reqwest::get(url).await.map_err(|e| e.to_string())?;
-    let content = response.bytes().await.map_err(|e| e.to_string())?;
+    let response = crate::http::HTTP_CLIENT.get(url).send().await?;
+    let content = response.bytes().await?;
 
     let mut zip_path = get_hycore_data_dir();
     zip_path.push("butler.zip");
-    fs::write(&zip_path, content).map_err(|e| e.to_string())?;
+    fs::write(&zip_path, content)?;
 
     let _ = window.emit(
         "update-status",
@@ -103,44 +90,33 @@ pub async fn ensure_butler(window: &tauri::Window) -> Result<PathBuf, String> {
     #[cfg(not(target_os = "windows"))]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&butler_path)
-            .map_err(|e| e.to_string())?
-            .permissions();
+        let mut perms = fs::metadata(&butler_path)?.permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&butler_path, perms).map_err(|e| e.to_string())?;
+        fs::set_permissions(&butler_path, perms)?;
     }
 
     Ok(butler_path)
 }
 
-fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
-    let file = fs::File::open(zip_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+fn extract_zip(zip_path: &Path, dest: &Path) -> anyhow::Result<()> {
+    let file = fs::File::open(zip_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let mut file = archive.by_index(i)?;
         let outpath = dest.join(file.mangled_name());
 
         if (&*file.name()).ends_with('/') {
-            fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+            fs::create_dir_all(&outpath)?;
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    fs::create_dir_all(&p).map_err(|e| e.to_string())?;
+                    fs::create_dir_all(&p)?;
                 }
             }
-            let mut outfile = fs::File::create(&outpath).map_err(|e| e.to_string())?;
-            std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+            let mut outfile = fs::File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
         }
     }
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn clean_staging_dir(staging: &Path) -> Result<(), String> {
-    if staging.exists() {
-        fs::remove_dir_all(staging).map_err(|e| e.to_string())?;
-    }
-    fs::create_dir_all(staging).map_err(|e| e.to_string())?;
     Ok(())
 }

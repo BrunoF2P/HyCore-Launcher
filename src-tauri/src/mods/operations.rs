@@ -1,11 +1,13 @@
 use super::api;
 use super::manifest::{get_mods_dir, load_manifest, save_manifest};
 use super::types::Mod;
+use crate::error::AppError;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Window;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-pub fn get_installed_mods() -> Result<Vec<Mod>, String> {
+pub fn get_installed_mods() -> Result<Vec<Mod>, AppError> {
     let manifest = load_manifest()?;
     Ok(manifest.mods)
 }
@@ -14,38 +16,28 @@ pub async fn install_mod_by_id(
     window: Window,
     mod_id: i32,
     file_id: Option<i32>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     log::info!(
         "Starting mod installation for mod_id: {}, file_id: {:?}",
         mod_id,
         file_id
     );
-    let details = api::get_mod_details(mod_id).await.map_err(|e| {
-        let err_msg = format!("Failed to fetch mod details: {}", e);
-        log::error!("{}", err_msg);
-        err_msg
-    })?;
+    let details = api::get_mod_details(mod_id).await?;
 
     log::info!("Installing mod: {}", details.name);
 
     let file = if let Some(fid) = file_id {
         log::info!("Fetching specific file version: {}", fid);
-        api::get_mod_file_details(mod_id, fid).await.map_err(|e| {
-            let err_msg = format!("Failed to fetch mod file details: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?
+        api::get_mod_file_details(mod_id, fid).await?
     } else {
         // Get latest file if not specified
         log::info!("No file_id provided, finding latest compatible file");
-        let mut files = api::get_mod_files(mod_id).await.map_err(|e| {
-            let err_msg = format!("Failed to fetch mod files list: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
+        let mut files = api::get_mod_files(mod_id).await?;
         if files.is_empty() {
             log::error!("No files available for this mod on CurseForge");
-            return Err("No files available for this mod".to_string());
+            return Err(AppError::ModNotFound(
+                "No files available for this mod".to_string(),
+            ));
         }
         files.sort_by(|a, b| b.file_date.cmp(&a.file_date));
         files.remove(0)
@@ -56,16 +48,14 @@ pub async fn install_mod_by_id(
             "Mod author has disabled direct downloads for file: {}",
             file.display_name
         );
-        return Err("Mod author has disabled direct downloads for this file.".to_string());
+        return Err(AppError::Unknown(
+            "Mod author has disabled direct downloads for this file.".to_string(),
+        ));
     }
     let download_url = file.download_url.unwrap();
 
     let mods_dir = get_mods_dir();
-    fs::create_dir_all(&mods_dir).map_err(|e| {
-        let err_msg = format!("Failed to create mods directory: {}", e);
-        log::error!("{}", err_msg);
-        err_msg
-    })?;
+    fs::create_dir_all(&mods_dir).map_err(|e| AppError::DirCreation(e.to_string()))?;
 
     let dest_path = mods_dir.join(&file.file_name);
     log::info!("Downloading mod to: {:?}", dest_path);
@@ -107,8 +97,8 @@ pub async fn install_mod_by_id(
         curse_forge_id: Some(mod_id),
         file_id: Some(file.id),
         enabled: true,
-        installed_at: chrono::Local::now().to_rfc3339(),
-        updated_at: chrono::Local::now().to_rfc3339(),
+        installed_at: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
+        updated_at: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
         file_path: dest_path.to_string_lossy().to_string(),
         icon_url: Some(logo),
         downloads: Some(details.download_count),
@@ -123,7 +113,7 @@ pub async fn install_mod_by_id(
     Ok(())
 }
 
-pub fn remove_mod(mod_id: String) -> Result<(), String> {
+pub fn remove_mod(mod_id: String) -> Result<(), AppError> {
     log::info!("Removing mod: {}", mod_id);
     let mut manifest = load_manifest()?;
 
@@ -151,7 +141,7 @@ pub fn remove_mod(mod_id: String) -> Result<(), String> {
             "Failed to remove mod: mod_id {} not found in manifest",
             mod_id
         );
-        return Err(format!("Mod not found: {}", mod_id));
+        return Err(AppError::ModNotFound(mod_id));
     }
 
     save_manifest(&manifest)?;
@@ -159,7 +149,7 @@ pub fn remove_mod(mod_id: String) -> Result<(), String> {
     Ok(())
 }
 
-pub fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), String> {
+pub fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), AppError> {
     log::info!("Toggling mod {} (enabled={})", mod_id, enabled);
     let mut manifest = load_manifest()?;
     let mut found = false;
@@ -205,7 +195,7 @@ pub fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), String> {
 
     if !found {
         log::error!("Failed to toggle mod: mod_id {} not found", mod_id);
-        return Err(format!("Mod not found: {}", mod_id));
+        return Err(AppError::ModNotFound(mod_id));
     }
 
     save_manifest(&manifest)?;
@@ -214,7 +204,7 @@ pub fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn check_mods_updates() -> Result<Vec<String>, String> {
+pub async fn check_mods_updates() -> Result<Vec<String>, AppError> {
     log::info!("Checking for mod updates...");
     let mut manifest = load_manifest()?;
     let mut mod_ids = Vec::with_capacity(manifest.mods.len());
@@ -234,11 +224,7 @@ pub async fn check_mods_updates() -> Result<Vec<String>, String> {
         mod_ids.len()
     );
     // CurseForge supports up to 200 IDs per request
-    let remote_mods = api::get_mods(mod_ids).await.map_err(|e| {
-        let err_msg = format!("CurseForge query failed: {}", e);
-        log::error!("{}", err_msg);
-        err_msg
-    })?;
+    let remote_mods = api::get_mods(mod_ids).await?;
     let mut updated_ids = vec![];
 
     for remote_mod in remote_mods {

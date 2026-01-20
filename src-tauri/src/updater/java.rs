@@ -32,7 +32,7 @@ pub fn get_java_bin_path() -> PathBuf {
         .join(if cfg!(windows) { "java.exe" } else { "java" })
 }
 
-pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
+pub async fn ensure_java(window: &Window) -> anyhow::Result<PathBuf> {
     let java_path = get_java_bin_path();
 
     if java_path.exists() {
@@ -58,23 +58,11 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
     if jre_dir.exists() {
         let _ = fs::remove_dir_all(&jre_dir);
     }
-    fs::create_dir_all(&jre_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&jre_dir)?;
 
-    let os = if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "mac"
-    } else {
-        "linux"
-    };
+    let os = crate::platform::get_java_os();
 
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x64"
-    } else if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else {
-        return Err("Unsupported architecture".to_string());
-    };
+    let arch = crate::platform::get_java_arch();
 
     let url = format!(
         "https://api.adoptium.net/v3/binary/latest/{}/ga/{}/{}/jre/hotspot/normal/eclipse?project=jdk",
@@ -107,17 +95,17 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
     let _ = fs::remove_file(archive_path);
 
     if !java_path.exists() {
-        return Err("Java executable not found after extraction".to_string());
+        return Err(anyhow::anyhow!(
+            "Java executable not found after extraction"
+        ));
     }
 
     #[cfg(not(target_os = "windows"))]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&java_path)
-            .map_err(|e| e.to_string())?
-            .permissions();
+        let mut perms = fs::metadata(&java_path)?.permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&java_path, perms).map_err(|e| e.to_string())?;
+        fs::set_permissions(&java_path, perms)?;
     }
 
     let _ = window.emit(
@@ -132,33 +120,35 @@ pub async fn ensure_java(window: &Window) -> Result<PathBuf, String> {
     Ok(java_path)
 }
 
-async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
+async fn extract_jre(archive_path: &Path, dest: &Path) -> anyhow::Result<()> {
     log::info!("Extracting JRE to {:?}", dest);
 
-    let file = fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let file = fs::File::open(archive_path)?;
 
     if archive_path.extension().unwrap_or_default() == "zip" {
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+        let mut archive = zip::ZipArchive::new(file)?;
 
         for i in 0..archive.len() {
-            let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+            let mut file = archive.by_index(i)?;
 
             if file.name().ends_with('/') {
                 continue;
             }
 
-            let path = file.enclosed_name().ok_or("Invalid file path in zip")?;
+            let path = file
+                .enclosed_name()
+                .ok_or_else(|| anyhow::anyhow!("Invalid file path in zip"))?;
             let mut components = path.components();
             components.next();
 
             let outpath = dest.join(components.as_path());
 
             if let Some(p) = outpath.parent() {
-                fs::create_dir_all(p).map_err(|e| e.to_string())?;
+                fs::create_dir_all(p)?;
             }
 
-            let mut outfile = fs::File::create(&outpath).map_err(|e| e.to_string())?;
-            std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+            let mut outfile = fs::File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
         }
     } else {
         use flate2::read::GzDecoder;
@@ -167,9 +157,9 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
         let tar = GzDecoder::new(file);
         let mut archive = Archive::new(tar);
 
-        for entry in archive.entries().map_err(|e| e.to_string())? {
-            let mut entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path().map_err(|e| e.to_string())?;
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let path = entry.path()?.to_path_buf();
 
             let mut components = path.components();
             components.next();
@@ -177,10 +167,10 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
             let outpath = dest.join(components.as_path());
 
             if let Some(p) = outpath.parent() {
-                fs::create_dir_all(p).map_err(|e| e.to_string())?;
+                fs::create_dir_all(p)?;
             }
 
-            entry.unpack(&outpath).map_err(|e| e.to_string())?;
+            entry.unpack(&outpath)?;
         }
     }
 
@@ -189,9 +179,9 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
         log::info!("macOS JRE structure detected, normalizing...");
 
         // List all files in mac_home and move them to dest
-        let entries = fs::read_dir(&mac_home).map_err(|e| e.to_string())?;
+        let entries = fs::read_dir(&mac_home)?;
         for entry in entries {
-            let entry = entry.map_err(|e| e.to_string())?;
+            let entry = entry?;
             let target_path = dest.join(entry.file_name());
 
             // If target exists (rare, but just in case), remove it
@@ -203,7 +193,7 @@ async fn extract_jre(archive_path: &Path, dest: &Path) -> Result<(), String> {
                 }
             }
 
-            fs::rename(entry.path(), target_path).map_err(|e| e.to_string())?;
+            fs::rename(entry.path(), target_path)?;
         }
 
         let _ = fs::remove_dir_all(dest.join("Contents"));

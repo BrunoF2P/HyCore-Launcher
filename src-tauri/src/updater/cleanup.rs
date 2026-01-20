@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use super::env::get_hycore_data_dir;
+use super::env::{get_hycore_data_dir, get_legacy_version_file_path, get_version_file_path};
 
-pub fn cleanup_incomplete_downloads() -> Result<(), String> {
+pub fn cleanup_incomplete_downloads() -> anyhow::Result<()> {
     log::info!("Starting environment cleanup...");
 
     let app_dir = get_hycore_data_dir();
@@ -27,15 +27,15 @@ pub fn cleanup_incomplete_downloads() -> Result<(), String> {
     Ok(())
 }
 
-fn clean_directory(dir: &Path, extensions: &[&str]) -> Result<(), String> {
+fn clean_directory(dir: &Path, extensions: &[&str]) -> anyhow::Result<()> {
     if !dir.exists() {
         return Ok(());
     }
 
-    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let entries = fs::read_dir(dir)?;
 
     for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = entry?;
         let path = entry.path();
 
         if path.is_file() {
@@ -57,7 +57,7 @@ fn clean_directory(dir: &Path, extensions: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn clean_incomplete_game(game_dir: &Path) -> Result<(), String> {
+fn clean_incomplete_game(game_dir: &Path) -> anyhow::Result<()> {
     // Check if Client folder exists but is empty or game executable is missing?
     // The Go code uses a specific marker file ".installing". We don't have that yet.
     // However, we can check for the staging directory leftovers.
@@ -66,6 +66,59 @@ fn clean_incomplete_game(game_dir: &Path) -> Result<(), String> {
     if staging_dir.exists() {
         log::info!("Found leftover staging directory, cleaning up...");
         let _ = fs::remove_dir_all(staging_dir);
+    }
+
+    Ok(())
+}
+
+pub fn clean_staging_dir(staging: &Path) -> anyhow::Result<()> {
+    if staging.exists() {
+        if let Err(_) = fs::remove_dir_all(staging) {
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(entries) = fs::read_dir(staging) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let _ = fs::remove_file(path);
+                        } else if path.is_dir() {
+                            let _ = fs::remove_dir_all(path);
+                        }
+                    }
+                }
+                // Try removing the dir again
+                let _ = fs::remove_dir_all(staging);
+            }
+        }
+    }
+
+    if let Some(parent) = staging.parent() {
+        if let Ok(entries) = fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".tmp") || name.starts_with("sf-") {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
+
+    fs::create_dir_all(staging)?;
+    Ok(())
+}
+
+pub fn remove_version_files() -> anyhow::Result<()> {
+    let json_path = get_version_file_path();
+    let txt_path = get_legacy_version_file_path();
+
+    if json_path.exists() {
+        log::info!("Removing version file: {:?}", json_path);
+        let _ = fs::remove_file(json_path);
+    }
+
+    if txt_path.exists() {
+        log::info!("Removing legacy version file: {:?}", txt_path);
+        let _ = fs::remove_file(txt_path);
     }
 
     Ok(())

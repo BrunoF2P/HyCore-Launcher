@@ -10,13 +10,10 @@ use tauri::{Emitter, Window};
 use super::env::get_hycore_data_dir;
 use super::types::UpdateStatus;
 
-pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(300))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .user_agent("HyCore-Launcher/1.0")
-        .build()
-        .map_err(|e: reqwest::Error| e.to_string())?;
+use crate::error::AppError;
+
+pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> anyhow::Result<()> {
+    let client = &crate::http::HTTP_CLIENT;
 
     let mut downloaded = if dest.exists() {
         let size = fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
@@ -28,7 +25,7 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
         0
     };
 
-    let mut request = client.get(url);
+    let mut request = client.get(url).timeout(Duration::from_secs(300));
 
     if downloaded > 0 {
         let range_header = format!("bytes={}-", downloaded);
@@ -41,13 +38,13 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
     let response = request
         .send()
         .await
-        .map_err(|e: reqwest::Error| format!("GET request failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("GET request failed: {}", e))?;
 
     let status = response.status();
     log::info!("GET response status: {}", status);
 
     if !status.is_success() {
-        return Err(format!("Server returned error: {}", status));
+        return Err(anyhow::anyhow!("Server returned error: {}", status));
     }
 
     let total_size = if status == reqwest::StatusCode::PARTIAL_CONTENT {
@@ -55,18 +52,20 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
             .headers()
             .get("Content-Range")
             .and_then(|v| v.to_str().ok())
-            .ok_or("Server used 206 but did not provide Content-Range header")?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Server used 206 but did not provide Content-Range header")
+            })?;
 
         log::info!("Content-Range: {}", content_range);
 
         let size_str = content_range
             .split('/')
             .last()
-            .ok_or("Invalid Content-Range header")?;
+            .ok_or_else(|| anyhow::anyhow!("Invalid Content-Range header"))?;
 
         let total = size_str
             .parse::<u64>()
-            .map_err(|_| "Could not parse total size from Content-Range")?;
+            .map_err(|_| anyhow::anyhow!("Could not parse total size from Content-Range"))?;
 
         log::info!(
             "Total file size from Content-Range: {} bytes ({:.2} MB)",
@@ -82,10 +81,10 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
 
         let len = response
             .content_length()
-            .ok_or("Server did not provide Content-Length")?;
+            .ok_or_else(|| anyhow::anyhow!("Server did not provide Content-Length"))?;
 
         if len == 0 {
-            return Err("Server returned Content-Length: 0".to_string());
+            return Err(anyhow::anyhow!("Server returned Content-Length: 0"));
         }
 
         log::info!(
@@ -128,13 +127,10 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
 
     let mut file = if downloaded > 0 {
         log::info!("Opening file in append mode");
-        fs::OpenOptions::new()
-            .append(true)
-            .open(dest)
-            .map_err(|e| e.to_string())?
+        fs::OpenOptions::new().append(true).open(dest)?
     } else {
         log::info!("Creating new file at {:?}", dest);
-        fs::File::create(dest).map_err(|e| e.to_string())?
+        fs::File::create(dest)?
     };
 
     let mut stream = response.bytes_stream();
@@ -145,16 +141,16 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
     log::info!("Starting stream download...");
 
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result.map_err(|e: reqwest::Error| {
+        let chunk = chunk_result.map_err(|e| {
             let err = format!("Stream error at {} bytes: {}", downloaded, e);
             log::error!("{}", err);
-            err
+            anyhow::anyhow!(err)
         })?;
 
         file.write_all(&chunk).map_err(|e| {
             let err = format!("Write error at {} bytes: {}", downloaded, e);
             log::error!("{}", err);
-            err
+            anyhow::anyhow!(err)
         })?;
 
         let chunk_size = chunk.len() as u64;
@@ -199,10 +195,10 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> Re
             (downloaded as f64 / total_size as f64) * 100.0
         );
         log::error!("{}", err);
-        return Err(format!("{}. Run update again to resume.", err));
+        return Err(anyhow::anyhow!("{}. Run update again to resume.", err));
     }
 
-    file.sync_all().map_err(|e| e.to_string())?;
+    file.sync_all()?;
 
     let elapsed = start_time.elapsed().as_secs();
     let avg_speed = if elapsed > 0 {
@@ -225,14 +221,14 @@ pub async fn download_with_retry(
     dest: &Path,
     window: &Window,
     retries: u32,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     for attempt in 0..retries {
         match download_with_resume(url, dest, window).await {
             Ok(_) => {
                 let file_size = fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
 
                 if file_size == 0 {
-                    return Err("Downloaded file is empty".to_string());
+                    return Err(anyhow::anyhow!("Downloaded file is empty"));
                 }
 
                 return Ok(());
@@ -256,28 +252,28 @@ pub async fn download_with_retry(
             }
             Err(e) => {
                 log::error!("Download failed after {} attempts: {}", retries, e);
-                return Err(format!("Download failed: {}", e));
+                return Err(anyhow::anyhow!("Download failed: {}", e));
             }
         }
     }
-    Err("Max retries reached".to_string())
+    Err(anyhow::anyhow!("Max retries reached"))
 }
 
 #[allow(dead_code)]
-pub fn verify_pwr_file(path: &Path, expected_hash: &str) -> Result<(), String> {
-    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+pub fn verify_pwr_file(path: &Path, expected_hash: &str) -> anyhow::Result<()> {
+    let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher).map_err(|e| e.to_string())?;
+    std::io::copy(&mut file, &mut hasher)?;
 
     let hash = format!("{:x}", hasher.finalize());
     if hash != expected_hash {
-        return Err("File corrupted: hash mismatch".to_string());
+        return Err(anyhow::anyhow!("File corrupted: hash mismatch"));
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn validate_pwr_file(version: u32) -> Result<bool, String> {
+pub async fn validate_pwr_file(version: u32) -> Result<bool, AppError> {
     let pwr_path = get_hycore_data_dir().join(format!("{}.pwr", version));
 
     if !pwr_path.exists() {

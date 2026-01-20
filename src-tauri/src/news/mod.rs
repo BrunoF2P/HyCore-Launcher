@@ -1,8 +1,13 @@
-use chrono::{DateTime, Datelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
+use crate::updater::env::get_hycore_data_dir;
+
+const CACHE_TTL_SECS: u64 = 3600;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewsItem {
@@ -39,44 +44,26 @@ struct ApiPost {
     cover_image: ApiCoverImage,
 }
 
-pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
+pub async fn fetch_news() -> anyhow::Result<Vec<NewsItem>> {
     log::info!("Fetching news from Hytale API...");
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            log::error!("Failed to build HTTP client: {}", err_msg);
-            err_msg
-        })?;
+    let client = &crate::http::HTTP_CLIENT;
 
     let response = client
         .get("https://hytale.com/api/blog/post/published")
         .send()
-        .await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            log::error!("API request failed: {}", err_msg);
-            err_msg
-        })?;
+        .await?;
 
-    let api_posts: Vec<ApiPost> = response.json().await.map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to parse API response: {}", err_msg);
-        err_msg
-    })?;
+    let api_posts: Vec<ApiPost> = response.json().await?;
 
     log::info!("Successfully fetched {} posts from API", api_posts.len());
 
     let mut news_items = Vec::new();
 
     for post in api_posts.into_iter().take(3) {
-        let date_parsed = DateTime::parse_from_rfc3339(&post.published_at)
-            .map(|dt| dt.with_timezone(&Utc))
-            .ok();
+        let date_parsed = OffsetDateTime::parse(&post.published_at, &Rfc3339).ok();
 
         let date_str = date_parsed
-            .map(|dt| format!("{}/{}/{}", dt.day(), dt.month(), dt.year()))
+            .map(|dt| format!("{}/{}/{}", dt.day(), dt.month() as u8, dt.year()))
             .unwrap_or_else(|| {
                 post.published_at
                     .split('T')
@@ -89,7 +76,7 @@ pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
             format!(
                 "https://hytale.com/news/{}/{}/{}",
                 dt.year(),
-                dt.month(),
+                dt.month() as u8,
                 post.slug
             )
         } else {
@@ -122,15 +109,10 @@ pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
 }
 
 fn get_cache_path() -> PathBuf {
-    // Attempt to use a more stable path in home directory for Linux
-    let mut path = dirs::data_dir().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    path.push("hycore");
-    let _ = fs::create_dir_all(&path);
-    path.push("news_cache.json");
-    path
+    get_hycore_data_dir().join("news_cache.json")
 }
 
-fn save_cache(items: &[NewsItem]) -> Result<(), String> {
+fn save_cache(items: &[NewsItem]) -> anyhow::Result<()> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -141,40 +123,33 @@ fn save_cache(items: &[NewsItem]) -> Result<(), String> {
         timestamp,
     };
 
-    let json = serde_json::to_string(&cache).map_err(|e| e.to_string())?;
-    fs::write(get_cache_path(), json).map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to write news cache: {}", err_msg);
-        err_msg
-    })?;
+    let json = serde_json::to_string(&cache)?;
+    fs::write(get_cache_path(), json)?;
     Ok(())
 }
 
-pub fn load_cache() -> Result<Vec<NewsItem>, String> {
+pub fn load_cache() -> anyhow::Result<Vec<NewsItem>> {
     let path = get_cache_path();
     if path.exists() {
         log::info!("Loading news from cache...");
-        let json = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        let cache: NewsCache = serde_json::from_str(&json).map_err(|e| {
-            log::error!("Failed to parse news cache");
-            e.to_string()
-        })?;
+        let json = fs::read_to_string(path)?;
+        let cache: NewsCache = serde_json::from_str(&json)?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
-        // Cache valid for 1 hour (3600 seconds)
-        if now - cache.timestamp < 3600 {
+        // Cache valid for 1 hour
+        if now - cache.timestamp < CACHE_TTL_SECS {
             log::info!("News cache is valid ({} items)", cache.items.len());
             Ok(cache.items)
         } else {
             log::info!("News cache expired");
-            Err("Cache expired".to_string())
+            Err(anyhow::anyhow!("Cache expired"))
         }
     } else {
         log::info!("No news cache found");
-        Err("No cache found".to_string())
+        Err(anyhow::anyhow!("No cache found"))
     }
 }

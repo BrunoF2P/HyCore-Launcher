@@ -7,30 +7,39 @@ static DISCORD_CLIENT: Lazy<Mutex<Option<DiscordIpcClient>>> = Lazy::new(|| Mute
 
 pub fn init_discord() {
     let settings = load_settings();
-    if !settings.discord_rpc_enabled {
-        log::info!("Discord RPC is disabled in settings");
-        return;
-    }
+    set_rpc_enabled(settings.discord_rpc_enabled);
+}
 
-    log::info!("Initializing Discord RPC...");
-    let mut client = DiscordIpcClient::new("1461306150497550376");
+pub fn set_rpc_enabled(enabled: bool) {
+    if enabled {
+        let mut guard = DISCORD_CLIENT.lock().unwrap();
+        if guard.is_some() {
+            log::info!("Discord RPC already initialized");
+            return;
+        }
 
-    if let Err(e) = client.connect() {
-        log::warn!(
-            "Could not connect to Discord RPC: {}. Discord might not be running.",
-            e
+        log::info!("Initializing Discord RPC...");
+        let mut client = DiscordIpcClient::new("1461306150497550376");
+
+        if let Err(e) = client.connect() {
+            log::warn!(
+                "Could not connect to Discord RPC: {}. Discord might not be running.",
+                e
+            );
+            return;
+        }
+
+        let _ = client.set_activity(
+            activity::Activity::new()
+                .state("No Launcher")
+                .details("Navegando"),
         );
-        return;
+
+        *guard = Some(client);
+        log::info!("Discord RPC initialized successfully");
+    } else {
+        clear_discord();
     }
-
-    let _ = client.set_activity(
-        activity::Activity::new()
-            .state("No Launcher")
-            .details("Navegando"),
-    );
-
-    *DISCORD_CLIENT.lock().unwrap() = Some(client);
-    log::info!("Discord RPC initialized successfully");
 }
 
 pub fn update_discord_status(state: &str, details: &str) {

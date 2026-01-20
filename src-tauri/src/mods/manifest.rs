@@ -1,4 +1,5 @@
 use super::types::ModManifest;
+use crate::error::AppError;
 use crate::updater::env::get_user_data_dir;
 use std::fs;
 use std::path::PathBuf;
@@ -10,7 +11,6 @@ pub fn get_mods_dir() -> PathBuf {
 pub fn get_modpacks_dir() -> PathBuf {
     let path = crate::updater::env::get_hycore_data_dir().join("Profiles");
 
-    // Migration logic (one-time)
     if !path.exists() {
         let old_path = crate::updater::env::get_hycore_data_dir()
             .join("UserData")
@@ -33,7 +33,6 @@ pub fn get_active_profile_name_path() -> PathBuf {
 pub fn get_active_profile() -> String {
     let path = get_active_profile_name_path();
 
-    // Migration logic (one-time)
     if !path.exists() {
         let old_path = crate::updater::env::get_hycore_data_dir()
             .join("UserData")
@@ -60,7 +59,7 @@ pub fn get_active_profile() -> String {
     }
 }
 
-pub fn set_active_profile_name(name: &str) -> Result<(), String> {
+pub fn set_active_profile_name(name: &str) -> Result<(), AppError> {
     log::info!("Switching active profile to: {}", name);
     let path = get_active_profile_name_path();
     if let Some(parent) = path.parent() {
@@ -70,11 +69,13 @@ pub fn set_active_profile_name(name: &str) -> Result<(), String> {
             err_msg
         })?;
     }
-    fs::write(&path, name).map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to write active profile state: {}", err_msg);
-        err_msg
-    })
+    fs::write(&path, name)
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            log::error!("Failed to write active profile state: {}", err_msg);
+            err_msg
+        })
+        .map_err(AppError::from)
 }
 
 pub fn get_manifest_path() -> PathBuf {
@@ -82,7 +83,7 @@ pub fn get_manifest_path() -> PathBuf {
     get_modpacks_dir().join(format!("{}.json", active))
 }
 
-pub fn load_manifest() -> Result<ModManifest, String> {
+pub fn load_manifest() -> Result<ModManifest, AppError> {
     let path = get_manifest_path();
     log::info!("Loading manifest from {:?}", path);
     if !path.exists() {
@@ -93,37 +94,17 @@ pub fn load_manifest() -> Result<ModManifest, String> {
         });
     }
 
-    let data = fs::read(&path).map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to read manifest file: {}", err_msg);
-        err_msg
-    })?;
-    serde_json::from_slice(&data).map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to parse manifest JSON: {}", err_msg);
-        err_msg
-    })
+    let data = fs::read(&path)?;
+    serde_json::from_slice(&data).map_err(AppError::from)
 }
 
-pub fn save_manifest(manifest: &ModManifest) -> Result<(), String> {
+pub fn save_manifest(manifest: &ModManifest) -> Result<(), AppError> {
     let path = get_manifest_path();
     log::info!("Saving manifest to {:?}", path);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            let err_msg = e.to_string();
-            log::error!("Failed to create directory for manifest: {}", err_msg);
-            err_msg
-        })?;
+        fs::create_dir_all(parent).map_err(|e| AppError::DirCreation(e.to_string()))?;
     }
 
-    let data = serde_json::to_string(manifest).map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to serialize manifest: {}", err_msg);
-        err_msg
-    })?;
-    fs::write(&path, data).map_err(|e| {
-        let err_msg = e.to_string();
-        log::error!("Failed to write manifest file: {}", err_msg);
-        err_msg
-    })
+    let data = serde_json::to_string(manifest)?;
+    fs::write(&path, data).map_err(AppError::from)
 }

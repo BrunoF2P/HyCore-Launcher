@@ -1,25 +1,29 @@
 use super::types::{CurseForgeMod, CurseForgeResponse, ModCategory, ModFile, SearchResult};
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
-use reqwest::{Client, Url};
-use std::time::Duration;
+use reqwest::Url;
+
+use crate::error::AppError;
+
+use once_cell::sync::Lazy;
+use std::sync::RwLock;
+use std::time::{Duration, Instant};
 
 const CURSE_FORGE_BASE_URL: &str = "https://api.curseforge.com/v1";
 const HYTALE_GAME_ID: i32 = 70216;
 const CF_API_KEY: &str = "$2a$10$bL4bIL5pUWqfcO7KQtnMReakwtfHbNKh6v1uTpKlzhwoueEJQnPnm";
 
-fn get_client() -> Result<Client, String> {
-    let mut headers = HeaderMap::new();
-    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-    headers.insert(
-        "x-api-key",
-        HeaderValue::from_str(CF_API_KEY).map_err(|e| e.to_string())?,
-    );
+struct Cache<T> {
+    data: T,
+    expires_at: Instant,
+}
 
-    Client::builder()
-        .default_headers(headers)
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())
+static CATEGORIES_CACHE: Lazy<RwLock<Option<Cache<Vec<ModCategory>>>>> =
+    Lazy::new(|| RwLock::new(None));
+
+fn builder(method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
+    crate::http::HTTP_CLIENT
+        .request(method, url)
+        .header("x-api-key", CF_API_KEY)
+        .header("Accept", "application/json")
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -34,8 +38,7 @@ pub struct SearchModsParams {
     pub index: Option<i32>,
 }
 
-pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, String> {
-    let client = get_client()?;
+pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, AppError> {
     let url = format!("{}/mods/search", CURSE_FORGE_BASE_URL);
 
     let mut query_params = vec![("gameId", HYTALE_GAME_ID.to_string())];
@@ -64,20 +67,18 @@ pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, Strin
 
     let final_url = Url::parse_with_params(&url, &query_params).map_err(|e| e.to_string())?;
 
-    let resp = client
-        .get(final_url)
+    let resp = builder(reqwest::Method::GET, final_url.as_str())
         .send()
-        .await
-        .map_err(|e: reqwest::Error| e.to_string())?;
+        .await?;
 
     if !resp.status().is_success() {
-        return Err(format!("CurseForge API error: {}", resp.status()));
+        return Err(AppError::from(format!(
+            "CurseForge API error: {}",
+            resp.status()
+        )));
     }
 
-    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> = resp
-        .json()
-        .await
-        .map_err(|e: reqwest::Error| e.to_string())?;
+    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> = resp.json().await?;
 
     let total_count = cf_resp
         .pagination
@@ -93,94 +94,113 @@ pub async fn search_mods(params: SearchModsParams) -> Result<SearchResult, Strin
     })
 }
 
-pub async fn get_mods(mod_ids: Vec<i32>) -> Result<Vec<CurseForgeMod>, String> {
-    let client = get_client()?;
+pub async fn get_mods(mod_ids: Vec<i32>) -> Result<Vec<CurseForgeMod>, AppError> {
     let url = format!("{}/mods", CURSE_FORGE_BASE_URL);
 
     let body = serde_json::json!({
         "modIds": mod_ids
     });
 
-    let resp = client
-        .post(&url)
+    let resp = builder(reqwest::Method::POST, &url)
         .json(&body)
         .send()
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     if !resp.status().is_success() {
-        return Err(format!("CurseForge API error: {}", resp.status()));
+        return Err(AppError::from(format!(
+            "CurseForge API error: {}",
+            resp.status()
+        )));
     }
 
-    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> =
-        resp.json().await.map_err(|e| e.to_string())?;
+    let cf_resp: CurseForgeResponse<Vec<CurseForgeMod>> = resp.json().await?;
     Ok(cf_resp.data)
 }
 
-pub async fn get_mod_details(mod_id: i32) -> Result<CurseForgeMod, String> {
-    let client = get_client()?;
+pub async fn get_mod_details(mod_id: i32) -> Result<CurseForgeMod, AppError> {
     let url = format!("{}/mods/{}", CURSE_FORGE_BASE_URL, mod_id);
 
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let resp = builder(reqwest::Method::GET, &url).send().await?;
 
     if !resp.status().is_success() {
-        return Err(format!("CurseForge API error: {}", resp.status()));
+        return Err(AppError::from(format!(
+            "CurseForge API error: {}",
+            resp.status()
+        )));
     }
 
-    let cf_resp: CurseForgeResponse<CurseForgeMod> =
-        resp.json().await.map_err(|e| e.to_string())?;
+    let cf_resp: CurseForgeResponse<CurseForgeMod> = resp.json().await?;
     Ok(cf_resp.data)
 }
 
-pub async fn get_mod_files(mod_id: i32) -> Result<Vec<ModFile>, String> {
-    let client = get_client()?;
+pub async fn get_mod_files(mod_id: i32) -> Result<Vec<ModFile>, AppError> {
     let url = format!("{}/mods/{}/files", CURSE_FORGE_BASE_URL, mod_id);
 
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let resp = builder(reqwest::Method::GET, &url).send().await?;
 
     if !resp.status().is_success() {
-        return Err(format!("CurseForge API error: {}", resp.status()));
+        return Err(AppError::from(format!(
+            "CurseForge API error: {}",
+            resp.status()
+        )));
     }
 
-    let cf_resp: CurseForgeResponse<Vec<ModFile>> = resp.json().await.map_err(|e| e.to_string())?;
+    let cf_resp: CurseForgeResponse<Vec<ModFile>> = resp.json().await?;
     Ok(cf_resp.data)
 }
 
-pub async fn get_mod_file_details(mod_id: i32, file_id: i32) -> Result<ModFile, String> {
-    let client = get_client()?;
+pub async fn get_mod_file_details(mod_id: i32, file_id: i32) -> Result<ModFile, AppError> {
     let url = format!("{}/mods/{}/files/{}", CURSE_FORGE_BASE_URL, mod_id, file_id);
 
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let resp = builder(reqwest::Method::GET, &url).send().await?;
 
     if !resp.status().is_success() {
-        return Err(format!("CurseForge API error: {}", resp.status()));
+        return Err(AppError::from(format!(
+            "CurseForge API error: {}",
+            resp.status()
+        )));
     }
 
-    let cf_resp: CurseForgeResponse<ModFile> = resp.json().await.map_err(|e| e.to_string())?;
+    let cf_resp: CurseForgeResponse<ModFile> = resp.json().await?;
     Ok(cf_resp.data)
 }
 
 #[tauri::command]
-pub async fn get_categories() -> Result<Vec<ModCategory>, String> {
-    let client = get_client()?;
-    let url = format!("{}/categories", CURSE_FORGE_BASE_URL);
+pub async fn get_categories() -> Result<Vec<ModCategory>, AppError> {
+    // Check cache first
+    if let Ok(guard) = CATEGORIES_CACHE.read() {
+        if let Some(cache) = guard.as_ref() {
+            if cache.expires_at > Instant::now() {
+                log::info!("Serving mod categories from cache");
+                return Ok(cache.data.clone());
+            }
+        }
+    }
 
+    let url = format!("{}/categories", CURSE_FORGE_BASE_URL);
     let query_params = vec![("gameId", HYTALE_GAME_ID.to_string())];
     let final_url = Url::parse_with_params(&url, &query_params).map_err(|e| e.to_string())?;
 
-    let resp = client
-        .get(final_url)
+    let resp = builder(reqwest::Method::GET, final_url.as_str())
         .send()
-        .await
-        .map_err(|e: reqwest::Error| e.to_string())?;
+        .await?;
 
     if !resp.status().is_success() {
-        return Err(format!("CurseForge API error: {}", resp.status()));
+        return Err(AppError::from(format!(
+            "CurseForge API error: {}",
+            resp.status()
+        )));
     }
 
-    let cf_resp: CurseForgeResponse<Vec<ModCategory>> = resp
-        .json()
-        .await
-        .map_err(|e: reqwest::Error| e.to_string())?;
+    let cf_resp: CurseForgeResponse<Vec<ModCategory>> = resp.json().await?;
+
+    // Update cache
+    if let Ok(mut guard) = CATEGORIES_CACHE.write() {
+        *guard = Some(Cache {
+            data: cf_resp.data.clone(),
+            expires_at: Instant::now() + Duration::from_secs(3600), // 1 hour TTL
+        });
+    }
+
     Ok(cf_resp.data)
 }

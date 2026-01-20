@@ -1,8 +1,10 @@
 use std::fs;
 use std::process::Command;
 
+use crate::error::AppError;
+
 #[tauri::command]
-pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result<(), String> {
+pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result<(), AppError> {
     let game_dir = crate::updater::env::get_game_dir();
     let client_dir = crate::updater::env::get_client_dir();
     let user_dir = crate::updater::env::get_user_data_dir();
@@ -14,18 +16,22 @@ pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result
     );
 
     if !client_dir.exists() {
-        return Err("Game not installed. Please update first.".to_string());
+        return Err(AppError::GameNotInstalled);
     }
 
-    let app_dir_str = game_dir.to_str().ok_or("Invalid game directory path")?;
+    let app_dir_str = game_dir
+        .to_str()
+        .ok_or_else(|| AppError::Unknown("Invalid game directory path".to_string()))?;
     let user_dir_str = user_dir
         .to_str()
-        .ok_or("Invalid UserData path")?
+        .ok_or_else(|| AppError::Unknown("Invalid UserData path".to_string()))?
         .to_string();
 
     let _ = fs::create_dir_all(&user_dir);
 
-    let java_exec = crate::updater::java::ensure_java(&window).await?;
+    let java_exec = crate::updater::java::ensure_java(&window)
+        .await
+        .map_err(AppError::from)?;
 
     let player_name = crate::player::get_player_name();
 
@@ -36,7 +42,7 @@ pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result
     let executable = client_dir.join("HytaleClient");
 
     if !executable.exists() {
-        return Err("Game executable not found. Please update the game.".to_string());
+        return Err(AppError::GameNotInstalled);
     }
 
     log::info!("Launching game: {:?}", executable);
@@ -54,8 +60,6 @@ pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result
         .arg("--auth-mode")
         .arg("Offline");
 
-    // Set JVM options via environment variable as the native HytaleClient wrapper
-    // rejects them as direct command line arguments.
     let mut jvm_options = format!("-Xms{}G -Xmx{}G", settings.ram_min_gb, settings.ram_max_gb);
     if !settings.custom_java_args.is_empty() {
         jvm_options.push(' ');
@@ -106,7 +110,7 @@ pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result
     log::info!("Launching with Java: {:?}", cmd);
 
     cmd.spawn()
-        .map_err(|e| format!("Failed to launch game: {}", e))?;
+        .map_err(|e| AppError::Unknown(format!("Failed to launch game: {}", e)))?;
 
     log::info!("Game launched successfully");
 
