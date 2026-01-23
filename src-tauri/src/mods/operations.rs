@@ -60,18 +60,23 @@ pub async fn install_mod_by_id(
     let dest_path = mods_dir.join(&file.file_name);
     log::info!("Downloading mod to: {:?}", dest_path);
 
-    crate::updater::download::download_with_retry(&download_url, &dest_path, &window, 3)
+    crate::updater::download::download_with_retry(&download_url, &dest_path, &window, 3, None)
         .await
-        .map_err(|e| {
-            let err_msg = format!("Mod download failed: {}", e);
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
+        .map_err(|e| AppError::Unknown(format!("Mod download failed: {}", e)))?;
 
     let mut manifest = load_manifest()?;
 
     let mod_uuid = format!("cf-{}", mod_id);
     log::info!("Updating manifest for mod: {} ({})", details.name, mod_uuid);
+
+    // Cleanup old file if it differs from the new one
+    if let Some(old_mod) = manifest.mods.iter().find(|m| m.id == mod_uuid) {
+        let old_path = PathBuf::from(&old_mod.file_path);
+        if old_path.exists() && old_path != dest_path {
+            log::info!("Removing old mod version file: {:?}", old_path);
+            let _ = fs::remove_file(old_path);
+        }
+    }
     manifest.mods.retain(|m| m.id != mod_uuid);
 
     let author = details
@@ -97,8 +102,12 @@ pub async fn install_mod_by_id(
         curse_forge_id: Some(mod_id),
         file_id: Some(file.id),
         enabled: true,
-        installed_at: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
-        updated_at: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
+        installed_at: OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| "Unknown".to_string()),
+        updated_at: OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| "Unknown".to_string()),
         file_path: dest_path.to_string_lossy().to_string(),
         icon_url: Some(logo),
         downloads: Some(details.download_count),
