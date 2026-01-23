@@ -14,6 +14,9 @@ export interface GameSettings {
     player_name: string;
     override_os: string | null;
     override_arch: string | null;
+    online_mode: boolean;
+    auth_domain: string;
+    player_id: string;
 }
 
 interface SettingsState {
@@ -45,6 +48,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         player_name: 'Player',
         override_os: null,
         override_arch: null,
+        online_mode: true,
+        auth_domain: 'sanasol.ws',
+        player_id: '',
     },
     loading: false,
 

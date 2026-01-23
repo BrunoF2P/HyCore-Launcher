@@ -1,5 +1,7 @@
 use crate::settings::{load_settings, save_settings};
 
+pub mod auth;
+
 pub fn get_player_name() -> String {
     load_settings().player_name
 }

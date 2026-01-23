@@ -13,6 +13,9 @@ pub struct GameSettings {
     pub player_name: String,
     pub override_os: Option<String>,
     pub override_arch: Option<String>,
+    pub online_mode: bool,
+    pub auth_domain: String,
+    pub player_id: String,
 }
 
 impl Default for GameSettings {
@@ -31,6 +34,9 @@ impl Default for GameSettings {
                 .unwrap_or_else(|_| "Player".to_string()),
             override_os: None,
             override_arch: None,
+            online_mode: true,
+            auth_domain: "sanasol.ws".to_string(),
+            player_id: "".to_string(),
         }
     }
 }

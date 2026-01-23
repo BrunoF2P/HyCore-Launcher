@@ -62,8 +62,8 @@ pub struct LaunchArgs {
     pub uuid: String,
     pub name: String,
     pub auth_mode: String,
-    pub width: u32,
-    pub height: u32,
+    pub identity_token: Option<String>,
+    pub session_token: Option<String>,
 }
 
 pub fn construct_jvm_args(settings: &GameSettings) -> String {
@@ -97,11 +97,15 @@ pub async fn spawn_game_process(
         .arg("--name")
         .arg(&args.name)
         .arg("--auth-mode")
-        .arg(&args.auth_mode)
-        .arg("--width")
-        .arg(args.width.to_string())
-        .arg("--height")
-        .arg(args.height.to_string());
+        .arg(&args.auth_mode);
+
+    if let Some(token) = &args.identity_token {
+        cmd.arg("--identity-token").arg(token);
+    }
+
+    if let Some(token) = &args.session_token {
+        cmd.arg("--session-token").arg(token);
+    }
 
     cmd.env("_JAVA_OPTIONS", jvm_args);
     cmd.arg("--java-exec").arg(java_exec);

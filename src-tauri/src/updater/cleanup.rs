@@ -71,42 +71,6 @@ fn clean_incomplete_game(game_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn clean_staging_dir(staging: &Path) -> anyhow::Result<()> {
-    if staging.exists() {
-        if let Err(_) = fs::remove_dir_all(staging) {
-            #[cfg(target_os = "windows")]
-            {
-                if let Ok(entries) = fs::read_dir(staging) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_file() {
-                            let _ = fs::remove_file(path);
-                        } else if path.is_dir() {
-                            let _ = fs::remove_dir_all(path);
-                        }
-                    }
-                }
-                // Try removing the dir again
-                let _ = fs::remove_dir_all(staging);
-            }
-        }
-    }
-
-    if let Some(parent) = staging.parent() {
-        if let Ok(entries) = fs::read_dir(parent) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.ends_with(".tmp") || name.starts_with("sf-") {
-                    let _ = fs::remove_file(entry.path());
-                }
-            }
-        }
-    }
-
-    fs::create_dir_all(staging)?;
-    Ok(())
-}
-
 pub fn remove_version_files() -> anyhow::Result<()> {
     let json_path = get_version_file_path();
     let txt_path = get_legacy_version_file_path();

@@ -33,12 +33,14 @@ pub fn init_db() -> Result<()> {
             active_version INTEGER DEFAULT 0,
             player_name TEXT DEFAULT 'Player',
             override_os TEXT,
-            override_arch TEXT
+            override_arch TEXT,
+            online_mode INTEGER DEFAULT 1,
+            auth_domain TEXT DEFAULT 'sanasol.ws',
+            player_id TEXT DEFAULT ''
         )",
         [],
     )?;
 
-    // Migration for new columns (ignore errors if they already exist)
     let _ = conn.execute(
         "ALTER TABLE launcher_settings ADD COLUMN override_os TEXT",
         [],
@@ -48,11 +50,15 @@ pub fn init_db() -> Result<()> {
         [],
     );
     let _ = conn.execute(
-        "ALTER TABLE launcher_settings ADD COLUMN override_os TEXT",
+        "ALTER TABLE launcher_settings ADD COLUMN online_mode INTEGER DEFAULT 1",
         [],
     );
     let _ = conn.execute(
-        "ALTER TABLE launcher_settings ADD COLUMN override_arch TEXT",
+        "ALTER TABLE launcher_settings ADD COLUMN auth_domain TEXT DEFAULT 'sanasol.ws'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE launcher_settings ADD COLUMN player_id TEXT DEFAULT ''",
         [],
     );
 

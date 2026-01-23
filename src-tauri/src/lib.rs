@@ -153,6 +153,7 @@ pub fn run() {
             settings::set_game_settings,
             updater::get_local_manifest_command,
             updater::switch_version_command,
+            updater::get_available_versions_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

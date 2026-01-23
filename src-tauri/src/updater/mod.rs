@@ -11,9 +11,13 @@ pub use system::check_system_requirements;
 pub use types::{LocalManifest, LocalVersionInfo, SystemRequirements, UpdateStatus};
 
 use crate::error::AppError;
+use once_cell::sync::Lazy;
 use std::fs;
 use std::process::Command;
+use std::sync::Mutex;
 use tauri::{Emitter, Window};
+
+static UPDATE_LOCK: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
 use crate::platform::{get_hytale_arch, get_hytale_os};
 
@@ -89,53 +93,60 @@ pub fn get_local_manifest() -> LocalManifest {
     }
 }
 
-pub fn get_local_version_info() -> LocalVersionInfo {
-    let manifest = get_local_manifest();
-    manifest
-        .installed
-        .into_iter()
-        .find(|v| v.version == manifest.active_version)
-        .unwrap_or_default()
-}
-
 pub async fn is_update_available() -> Result<(bool, u32), AppError> {
-    let local = get_local_version_info();
     let settings = crate::settings::load_settings();
+    let active_version = settings.active_version;
+
+    // If no version is active or latest isn't found, find latest
     let latest = check::find_latest_version(&settings.channel)
         .await
         .map_err(AppError::from)?;
 
-    if latest != local.version || (latest > 0 && settings.channel != local.channel) {
-        return Ok((true, latest));
+    let target_version = if active_version == 0 || active_version > latest {
+        latest
+    } else {
+        active_version
+    };
+
+    let manifest = get_local_manifest();
+    let local_info = manifest
+        .installed
+        .into_iter()
+        .find(|v| v.version == target_version);
+
+    // If target version isn't installed at all, it's "available"
+    let is_installed = local_info.is_some();
+    if !is_installed {
+        return Ok((true, target_version));
     }
 
-    if latest == local.version && latest > 0 {
-        // Version number is the same, check metadata
-        match check::get_remote_metadata(latest, &settings.channel).await {
-            Ok(remote) => {
-                let size_changed = local.size.is_some() && remote.size != local.size;
-                let modified_changed =
-                    local.last_modified.is_some() && remote.last_modified != local.last_modified;
-                let etag_changed =
-                    local.etag.is_some() && remote.etag.is_some() && remote.etag != local.etag;
+    let local = local_info.unwrap();
 
-                if size_changed || modified_changed || etag_changed {
-                    log::info!("Update detected for same version {}: size_changed={}, modified_changed={}, etag_changed={}", 
-                        latest, size_changed, modified_changed, etag_changed);
-                    return Ok((true, latest));
-                }
+    // If it's installed, check for hotfixes/metadata changes
+    match check::get_remote_metadata(target_version, &settings.channel).await {
+        Ok(remote) => {
+            let size_changed = local.size.is_some() && remote.size != local.size;
+            let modified_changed =
+                local.last_modified.is_some() && remote.last_modified != local.last_modified;
+            let etag_changed =
+                local.etag.is_some() && remote.etag.is_some() && remote.etag != local.etag;
+
+            if size_changed || modified_changed || etag_changed {
+                log::info!("Update detected for version {}: size_changed={}, modified_changed={}, etag_changed={}", 
+                    target_version, size_changed, modified_changed, etag_changed);
+                return Ok((true, target_version));
             }
-            Err(e) => {
-                log::warn!(
-                    "Failed to fetch remote metadata for version {}: {}",
-                    latest,
-                    e
-                );
-            }
+        }
+        Err(e) => {
+            log::warn!(
+                "Failed to fetch remote metadata for version {}: {}",
+                target_version,
+                e
+            );
         }
     }
 
-    Ok((false, latest))
+    Ok((false, target_version))
 }
 
 pub async fn run_update(window: Window) -> Result<(), AppError> {
@@ -197,7 +208,11 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
     let _ = fs::create_dir_all(&game_dir);
     let staging_dir = game_dir.join("staging");
 
-    cleanup::clean_staging_dir(&staging_dir).map_err(AppError::from)?;
+    // Robust cleanup: ensure staging is completely empty before Butler starts
+    if staging_dir.exists() {
+        let _ = fs::remove_dir_all(&staging_dir);
+    }
+    let _ = fs::create_dir_all(&staging_dir);
 
     log::info!("Applying patch with Butler to {:?}", game_dir);
     let output = Command::new(butler)
@@ -305,8 +320,26 @@ pub async fn check_for_game_update() -> Result<(bool, u32), AppError> {
 
 #[tauri::command]
 pub async fn start_game_update(window: tauri::Window) -> Result<(), AppError> {
+    {
+        let mut lock = UPDATE_LOCK.lock().unwrap();
+        if *lock {
+            log::warn!("Update already in progress, ignoring request");
+            return Err(AppError::Unknown(
+                "Uma atualização já está em andamento.".to_string(),
+            ));
+        }
+        *lock = true;
+    }
+
     log::info!("Starting game update process...");
-    match run_update(window).await {
+    let result = run_update(window).await;
+
+    {
+        let mut lock = UPDATE_LOCK.lock().unwrap();
+        *lock = false;
+    }
+
+    match result {
         Ok(_) => {
             log::info!("Game update process finished successfully");
             Ok(())
@@ -327,6 +360,14 @@ pub async fn java_bin_path_command() -> std::path::PathBuf {
 #[tauri::command]
 pub fn get_local_manifest_command() -> LocalManifest {
     get_local_manifest()
+}
+
+#[tauri::command]
+pub async fn get_available_versions_command() -> Result<Vec<u32>, AppError> {
+    let settings = crate::settings::load_settings();
+    check::find_all_versions(&settings.channel)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]

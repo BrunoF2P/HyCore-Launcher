@@ -88,6 +88,57 @@ pub async fn find_latest_version(channel: &str) -> anyhow::Result<u32> {
     Ok(max_found)
 }
 
+pub async fn find_all_versions(channel: &str) -> anyhow::Result<Vec<u32>> {
+    let os = get_hytale_os();
+    let arch = get_hytale_arch();
+    let mut discovered = Vec::new();
+    const MAX_PROBE_VERSION: u32 = 100; // Realistic limit for Hytale versions for now
+
+    log::info!("Searching for all versions on channel {}...", channel);
+
+    let chunks = (1..MAX_PROBE_VERSION).collect::<Vec<u32>>();
+    let results = futures_util::stream::iter(chunks)
+        .map(|v| {
+            let os = os.clone();
+            let arch = arch.clone();
+            let channel = channel.to_string();
+            let url = format!(
+                "https://game-patches.hytale.com/patches/{}/{}/{}/0/{}.pwr",
+                os, arch, channel, v
+            );
+            async move {
+                let resp = HTTP_CLIENT
+                    .head(&url)
+                    .timeout(std::time::Duration::from_secs(3))
+                    .send()
+                    .await;
+
+                match resp {
+                    Ok(r) if r.status().is_success() => Some(v),
+                    _ => None,
+                }
+            }
+        })
+        .buffer_unordered(15) // Probe 15 versions in parallel
+        .collect::<Vec<Option<u32>>>()
+        .await;
+
+    for v_opt in results {
+        if let Some(v) = v_opt {
+            discovered.push(v);
+        }
+    }
+
+    discovered.sort_by(|a, b| b.cmp(a)); // Newest first
+
+    if discovered.is_empty() {
+        return Err(anyhow::anyhow!("No versions found on channel {}", channel));
+    }
+
+    log::info!("Discovered {} versions: {:?}", discovered.len(), discovered);
+    Ok(discovered)
+}
+
 pub async fn get_remote_metadata(version: u32, channel: &str) -> anyhow::Result<LocalVersionInfo> {
     let client = &HTTP_CLIENT;
 

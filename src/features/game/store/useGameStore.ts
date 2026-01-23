@@ -8,6 +8,7 @@ interface GameState {
     buttonState: ButtonState;
     updateAvailable: boolean;
     latestVersion: number;
+    availableVersions: number[];
     installedVersions: any[];
     activeVersion: number;
     manifest: any | null;
@@ -15,6 +16,7 @@ interface GameState {
     setButtonState: (state: ButtonState) => void;
     checkForUpdates: () => Promise<void>;
     fetchLocalVersions: () => Promise<void>;
+    fetchAvailableVersions: () => Promise<void>;
     switchVersion: (version: number) => Promise<void>;
     launchGame: () => Promise<void>;
     clearError: () => void;
@@ -24,6 +26,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     buttonState: 'idle',
     updateAvailable: false,
     latestVersion: 0,
+    availableVersions: [],
     installedVersions: [],
     activeVersion: 0,
     manifest: null,
@@ -46,6 +49,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
     },
 
+    fetchAvailableVersions: async () => {
+        try {
+            const versions = await invoke<number[]>('get_available_versions_command');
+            set({ availableVersions: versions });
+            if (versions.length > 0) {
+                set({ latestVersion: versions[0] });
+            }
+        } catch (err) {
+            console.error('Failed to fetch available versions:', err);
+        }
+    },
+
     switchVersion: async (version: number) => {
         try {
             await invoke('switch_version_command', { version });
@@ -58,14 +73,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     checkForUpdates: async () => {
         set({ buttonState: 'checking', lastError: null });
-        await get().fetchLocalVersions();
+        await Promise.all([
+            get().fetchLocalVersions(),
+            get().fetchAvailableVersions()
+        ]);
 
         try {
-            const [updateAvailable, latestVersion] = await invoke<[boolean, number]>('check_for_game_update');
+            const [updateAvailable] = await invoke<[boolean, number]>('check_for_game_update');
 
             set({
                 updateAvailable,
-                latestVersion,
                 buttonState: updateAvailable ? 'update_available' : 'ready',
             });
         } catch (err) {
@@ -94,11 +111,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (errorMsg.includes("Game not installed")) {
                 set({ buttonState: 'checking' });
                 try {
-                    const [, latestVersion] = await invoke<[boolean, number]>('check_for_game_update');
+                    const [updateAvailable] = await invoke<[boolean, number]>('check_for_game_update');
                     set({
-                        updateAvailable: true,
-                        latestVersion,
-                        buttonState: 'update_available',
+                        updateAvailable,
+                        buttonState: updateAvailable ? 'update_available' : 'ready',
                     });
                 } catch (e) {
                     set({ buttonState: 'ready' });

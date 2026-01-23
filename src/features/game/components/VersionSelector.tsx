@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 
 export const VersionSelector = () => {
     const { t } = useTranslation();
-    const { installedVersions, activeVersion, switchVersion, manifest, checkForUpdates, latestVersion, buttonState } = useGameStore();
+    const { installedVersions, activeVersion, switchVersion, availableVersions, checkForUpdates, latestVersion, buttonState } = useGameStore();
     const { settings, updateSettings } = useSettingsStore();
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -14,38 +14,24 @@ export const VersionSelector = () => {
     // Combine installed and available versions
     const allVersions = [...installedVersions.map(v => ({ ...v, installed: true }))];
 
-    if (manifest?.channels) {
-        Object.entries(manifest.channels).forEach(([channel, info]: [string, any]) => {
-            const version = info.latest_version;
-            if (!allVersions.find(v => v.version === version)) {
-                allVersions.push({
-                    version,
-                    channel,
-                    installed: false,
-                    size: null,
-                    last_modified: null,
-                    etag: null
-                });
-            }
-        });
-    }
+    // Add all available versions discovered by backend
+    availableVersions.forEach(version => {
+        if (!allVersions.find(v => v.version === version)) {
+            allVersions.push({
+                version,
+                channel: settings.channel,
+                installed: false,
+                size: null,
+                last_modified: null,
+                etag: null
+            });
+        }
+    });
 
     // If active version isn't in either, add it as a placeholder
     if (activeVersion > 0 && !allVersions.find(v => v.version === activeVersion)) {
         allVersions.push({
             version: activeVersion,
-            channel: settings.channel,
-            installed: false,
-            size: null,
-            last_modified: null,
-            etag: null
-        });
-    }
-
-    // Add brute-forced latest version as fallback if not in list
-    if (latestVersion > 0 && !allVersions.find(v => v.version === latestVersion)) {
-        allVersions.push({
-            version: latestVersion,
             channel: settings.channel,
             installed: false,
             size: null,
