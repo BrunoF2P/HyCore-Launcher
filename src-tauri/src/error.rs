@@ -20,6 +20,12 @@ pub enum AppError {
     #[error("Game not installed")]
     GameNotInstalled,
 
+    #[error("O jogo está aberto. Feche o jogo antes de realizar esta operação.")]
+    GameRunning,
+
+    #[error("Memória RAM insuficiente. Você reservou {requested}GB, mas o sistema tem apenas {available}GB livres.")]
+    InsufficientRam { requested: u32, available: u32 },
+
     #[error("Failed to create directory: {0}")]
     DirCreation(String),
 

@@ -8,7 +8,7 @@ pub mod types;
 
 pub use download::download_with_retry;
 pub use system::check_system_requirements;
-pub use types::{LocalVersionInfo, SystemRequirements, UpdateStatus};
+pub use types::{LocalManifest, LocalVersionInfo, SystemRequirements, UpdateStatus};
 
 use crate::error::AppError;
 use std::fs;
@@ -17,41 +17,101 @@ use tauri::{Emitter, Window};
 
 use crate::platform::{get_hytale_arch, get_hytale_os};
 
-pub fn get_local_version_info() -> LocalVersionInfo {
-    let json_path = env::get_version_file_path();
+pub fn get_local_manifest() -> LocalManifest {
+    let conn = crate::database::get_conn();
+    let mut stmt = match conn.prepare(
+        "SELECT version, channel, installed_at, last_modified, size, etag FROM installed_versions",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to prepare statement: {}", e);
+            return LocalManifest::default();
+        }
+    };
 
-    if json_path.exists() {
-        if let Ok(content) = fs::read_to_string(&json_path) {
-            if let Ok(info) = serde_json::from_str::<LocalVersionInfo>(&content) {
-                return info;
+    let version_iter = match stmt.query_map([], |row| {
+        Ok(LocalVersionInfo {
+            version: row.get(0)?,
+            channel: row.get(1)?,
+            installed_at: row.get(2)?,
+            last_modified: row.get(3)?,
+            size: row.get(4)?,
+            etag: row.get(5)?,
+        })
+    }) {
+        Ok(iter) => iter,
+        Err(e) => {
+            log::error!("Failed to query installed versions: {}", e);
+            return LocalManifest::default();
+        }
+    };
+
+    let mut installed = Vec::new();
+    for v in version_iter {
+        if let Ok(info) = v {
+            // Validate existence of folder
+            let dir = env::get_version_dir(info.version);
+            if dir.exists() {
+                installed.push(info);
+            } else {
+                // Cleanup missing from DB
+                let _ = conn.execute(
+                    "DELETE FROM installed_versions WHERE version = ?",
+                    [info.version],
+                );
             }
         }
     }
 
-    // Fallback to legacy version.txt
-    let txt_path = env::get_legacy_version_file_path();
-    let version = fs::read_to_string(txt_path)
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-
-    LocalVersionInfo {
-        version,
-        ..Default::default()
+    // Migration
+    if installed.is_empty() {
+        let json_path = env::get_versions_manifest_path();
+        if json_path.exists() {
+            if let Ok(content) = fs::read_to_string(&json_path) {
+                if let Ok(manifest) = serde_json::from_str::<LocalManifest>(&content) {
+                    for v in &manifest.installed {
+                        let _ = conn.execute(
+                            "INSERT OR IGNORE INTO installed_versions (version, channel, installed_at, last_modified, size, etag) 
+                             VALUES (?, ?, ?, ?, ?, ?)",
+                            rusqlite::params![v.version, v.channel, v.installed_at, v.last_modified, v.size, v.etag],
+                        );
+                    }
+                    installed = manifest.installed;
+                }
+            }
+        }
     }
+
+    let settings = crate::settings::load_settings();
+    LocalManifest {
+        installed,
+        active_version: settings.active_version,
+    }
+}
+
+pub fn get_local_version_info() -> LocalVersionInfo {
+    let manifest = get_local_manifest();
+    manifest
+        .installed
+        .into_iter()
+        .find(|v| v.version == manifest.active_version)
+        .unwrap_or_default()
 }
 
 pub async fn is_update_available() -> Result<(bool, u32), AppError> {
     let local = get_local_version_info();
-    let latest = check::find_latest_version().await.map_err(AppError::from)?;
+    let settings = crate::settings::load_settings();
+    let latest = check::find_latest_version(&settings.channel)
+        .await
+        .map_err(AppError::from)?;
 
-    if latest > local.version {
+    if latest != local.version || (latest > 0 && settings.channel != local.channel) {
         return Ok((true, latest));
     }
 
     if latest == local.version && latest > 0 {
         // Version number is the same, check metadata
-        match check::get_remote_metadata(latest).await {
+        match check::get_remote_metadata(latest, &settings.channel).await {
             Ok(remote) => {
                 let size_changed = local.size.is_some() && remote.size != local.size;
                 let modified_changed =
@@ -90,20 +150,26 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
     let butler = system::ensure_butler(&window)
         .await
         .map_err(AppError::from)?;
-    let latest = check::find_latest_version().await.map_err(AppError::from)?;
-    let remote_metadata = check::get_remote_metadata(latest).await.ok();
+
+    let settings = crate::settings::load_settings();
+    let latest = check::find_latest_version(&settings.channel)
+        .await
+        .map_err(AppError::from)?;
+    let remote_metadata = check::get_remote_metadata(latest, &settings.channel)
+        .await
+        .ok();
 
     let os = get_hytale_os();
     let arch = get_hytale_arch();
 
     let patch_url = format!(
-        "https://game-patches.hytale.com/patches/{}/{}/release/0/{}.pwr",
-        os, arch, latest
+        "https://game-patches.hytale.com/patches/{}/{}/{}/0/{}.pwr",
+        os, arch, &settings.channel, latest
     );
 
     let pwr_path = env::get_hycore_data_dir().join(format!("{}.pwr", latest));
 
-    download_with_retry(&patch_url, &pwr_path, &window, 5)
+    download_with_retry(&patch_url, &pwr_path, &window, 5, None)
         .await
         .map_err(AppError::from)?;
 
@@ -127,7 +193,8 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
         },
     );
 
-    let game_dir = env::get_game_dir();
+    let game_dir = env::get_version_dir(latest);
+    let _ = fs::create_dir_all(&game_dir);
     let staging_dir = game_dir.join("staging");
 
     cleanup::clean_staging_dir(&staging_dir).map_err(AppError::from)?;
@@ -164,22 +231,39 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
     let _ = fs::remove_file(pwr_path);
     let _ = fs::remove_dir_all(staging_dir);
 
-    let version_info = if let Some(info) = remote_metadata {
+    // Update local manifest in DB
+    let conn = crate::database::get_conn();
+    let version_info = if let Some(mut info) = remote_metadata {
+        info.installed_at = Some(time::OffsetDateTime::now_utc().to_string());
         info
     } else {
         LocalVersionInfo {
             version: latest,
+            channel: settings.channel.clone(),
+            installed_at: Some(time::OffsetDateTime::now_utc().to_string()),
             ..Default::default()
         }
     };
 
-    if let Ok(json) = serde_json::to_string(&version_info) {
-        let _ = fs::write(env::get_version_file_path(), json);
-    }
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO installed_versions (version, channel, installed_at, last_modified, size, etag) 
+         VALUES (?, ?, ?, ?, ?, ?)",
+        rusqlite::params![
+            version_info.version,
+            version_info.channel,
+            version_info.installed_at,
+            version_info.last_modified,
+            version_info.size,
+            version_info.etag
+        ],
+    );
 
-    fs::write(env::get_legacy_version_file_path(), latest.to_string()).map_err(AppError::Io)?;
+    // Update active version in settings
+    let mut settings = crate::settings::load_settings();
+    settings.active_version = latest;
+    let _ = crate::settings::set_game_settings(settings);
 
-    log::info!("Update complete! Version bumped to {}", latest);
+    log::info!("Update complete! Version installed to {:?}", game_dir);
 
     let _ = window.emit(
         "update-status",
@@ -190,5 +274,66 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
         },
     );
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_update_requirements() -> Result<SystemRequirements, AppError> {
+    log::info!("Checking update requirements...");
+    let reqs = check_system_requirements().await;
+    log::info!(
+        "Requirements checked: meets_requirements={}",
+        reqs.meets_requirements
+    );
+    Ok(reqs)
+}
+
+#[tauri::command]
+pub async fn check_for_game_update() -> Result<(bool, u32), AppError> {
+    log::info!("Checking for game update...");
+    match is_update_available().await {
+        Ok(res) => {
+            log::info!("Game update check: available={}, version={}", res.0, res.1);
+            Ok(res)
+        }
+        Err(e) => {
+            log::error!("Failed to check for game update: {}", e);
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn start_game_update(window: tauri::Window) -> Result<(), AppError> {
+    log::info!("Starting game update process...");
+    match run_update(window).await {
+        Ok(_) => {
+            log::info!("Game update process finished successfully");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Game update process failed: {}", e);
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn java_bin_path_command() -> std::path::PathBuf {
+    log::info!("Frontend requested Java binary path");
+    java::get_java_bin_path()
+}
+
+#[tauri::command]
+pub fn get_local_manifest_command() -> LocalManifest {
+    get_local_manifest()
+}
+
+#[tauri::command]
+pub fn switch_version_command(version: u32) -> Result<(), AppError> {
+    let mut settings = crate::settings::load_settings();
+    settings.active_version = version;
+    crate::settings::set_game_settings(settings)?;
+    log::info!("Switched active version to {}", version);
     Ok(())
 }

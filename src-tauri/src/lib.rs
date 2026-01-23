@@ -1,5 +1,5 @@
+mod database;
 pub mod error;
-use error::AppError;
 mod game;
 pub mod http;
 mod mods;
@@ -10,152 +10,10 @@ pub mod settings;
 pub mod social;
 mod system;
 mod updater;
+use tauri::Emitter;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-#[tauri::command]
-async fn get_news() -> Result<Vec<news::NewsItem>, AppError> {
-    log::info!("Fetching news...");
-    match news::fetch_news().await {
-        Ok(items) => {
-            log::info!("News fetched successfully ({} items)", items.len());
-            Ok(items)
-        }
-        Err(e) => {
-            log::warn!("Failed to fetch news from server, loading cache: {}", e);
-            news::load_cache().map_err(AppError::from)
-        }
-    }
-}
-
-#[tauri::command]
-async fn check_update_requirements() -> Result<updater::SystemRequirements, AppError> {
-    log::info!("Checking update requirements...");
-    let reqs = updater::check_system_requirements().await;
-    log::info!(
-        "Requirements checked: meets_requirements={}",
-        reqs.meets_requirements
-    );
-    Ok(reqs)
-}
-
-#[tauri::command]
-async fn check_for_game_update() -> Result<(bool, u32), AppError> {
-    log::info!("Checking for game update...");
-    match updater::is_update_available().await {
-        Ok(res) => {
-            log::info!("Game update check: available={}, version={}", res.0, res.1);
-            Ok(res)
-        }
-        Err(e) => {
-            log::error!("Failed to check for game update: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn start_game_update(window: tauri::Window) -> Result<(), AppError> {
-    log::info!("Starting game update process...");
-    match updater::run_update(window).await {
-        Ok(_) => {
-            log::info!("Game update process finished successfully");
-            Ok(())
-        }
-        Err(e) => {
-            log::error!("Game update process failed: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn search_mods_cf(
-    params: mods::api::SearchModsParams,
-) -> Result<mods::types::SearchResult, AppError> {
-    log::info!("Searching mods with params: {:?}", params);
-    match mods::api::search_mods(params).await {
-        Ok(res) => {
-            log::info!("Mod search returned {} results", res.mods.len());
-            Ok(res)
-        }
-        Err(e) => {
-            log::error!("Mod search failed: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn get_installed_mods() -> Result<Vec<mods::types::Mod>, AppError> {
-    log::info!("Fetching installed mods...");
-    match mods::operations::get_installed_mods() {
-        Ok(mods_list) => {
-            log::info!("Found {} installed mods", mods_list.len());
-            Ok(mods_list)
-        }
-        Err(e) => {
-            log::error!("Failed to fetch installed mods: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn install_mod_cf(
-    window: tauri::Window,
-    mod_id: i32,
-    file_id: Option<i32>,
-) -> Result<(), AppError> {
-    log::info!("Installing mod_id: {:?}, file_id: {:?}", mod_id, file_id);
-    match mods::operations::install_mod_by_id(window, mod_id, file_id).await {
-        Ok(_) => {
-            log::info!("Mod installed successfully");
-            Ok(())
-        }
-        Err(e) => {
-            log::error!("Failed to install mod: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn remove_mod(mod_id: String) -> Result<(), AppError> {
-    log::info!("Removing mod: {}", mod_id);
-    match mods::operations::remove_mod(mod_id) {
-        Ok(_) => {
-            log::info!("Mod removed successfully");
-            Ok(())
-        }
-        Err(e) => {
-            log::error!("Failed to remove mod: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), AppError> {
-    log::info!("Toggling mod {} (enabled={})", mod_id, enabled);
-    match mods::operations::toggle_mod(mod_id, enabled) {
-        Ok(_) => {
-            log::info!("Mod toggled successfully");
-            Ok(())
-        }
-        Err(e) => {
-            log::error!("Failed to toggle mod: {}", e);
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-async fn java_bin_path_command() -> std::path::PathBuf {
-    log::info!("Frontend requested Java binary path");
-    updater::java::get_java_bin_path()
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -180,6 +38,21 @@ pub fn run() {
             );
 
             log::info!("Launcher starting...");
+
+            // Initialize database
+            if let Err(e) = database::init_db() {
+                let error_msg = format!(
+                    "Falha ao inicializar o banco de dados: {}. O launcher não pode continuar.",
+                    e
+                );
+                log::error!("{}", error_msg);
+                let _ = app.handle().emit("fatal-error", error_msg);
+            }
+
+            // Cleanup incomplete downloads/temp files
+            if let Err(e) = updater::cleanup::cleanup_incomplete_downloads() {
+                log::warn!("Cleanup failed (not fatal): {}", e);
+            }
 
             // Initialize social integrations
             social::discord::init_discord();
@@ -250,20 +123,20 @@ pub fn run() {
                 .set_focus();
         }))
         .invoke_handler(tauri::generate_handler![
-            get_news,
-            check_update_requirements,
-            check_for_game_update,
-            start_game_update,
+            news::get_news,
+            updater::check_update_requirements,
+            updater::check_for_game_update,
+            updater::start_game_update,
             updater::download::validate_pwr_file,
             game::launch_game,
             player::get_player_name_command,
             player::set_player_name_command,
-            java_bin_path_command,
-            search_mods_cf,
-            get_installed_mods,
-            install_mod_cf,
-            remove_mod,
-            toggle_mod,
+            updater::java_bin_path_command,
+            mods::search_mods_cf,
+            mods::get_installed_mods,
+            mods::install_mod_cf,
+            mods::remove_mod,
+            mods::toggle_mod,
             mods::api::get_categories,
             mods::manifest::get_active_profile,
             mods::profiles::set_active_profile,
@@ -278,6 +151,8 @@ pub fn run() {
             system::info::get_system_ram_gb,
             settings::get_game_settings,
             settings::set_game_settings,
+            updater::get_local_manifest_command,
+            updater::switch_version_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

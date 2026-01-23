@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::updater::env::{get_game_dir, get_jre_dir, get_user_data_dir};
+use crate::updater::env::{get_game_dir, get_hycore_data_dir, get_user_data_dir};
 use std::fs;
 use tauri_plugin_opener::OpenerExt;
 
@@ -19,6 +19,10 @@ pub async fn open_game_folder(app: tauri::AppHandle) -> Result<(), AppError> {
     let path = get_game_dir();
     log::info!("Opening game folder: {:?}", path);
 
+    if crate::platform::is_game_running() {
+        log::warn!("User is opening game folder while game is running");
+    }
+
     if !path.exists() {
         log::info!("Creating game folder: {:?}", path);
         fs::create_dir_all(&path).map_err(|e| AppError::DirCreation(e.to_string()))?;
@@ -33,6 +37,10 @@ pub async fn open_game_folder(app: tauri::AppHandle) -> Result<(), AppError> {
 
 #[tauri::command]
 pub async fn wipe_game_data() -> Result<(), AppError> {
+    if crate::platform::is_game_running() {
+        return Err(AppError::GameRunning);
+    }
+
     let path = get_user_data_dir();
     log::info!("Wiping game data at {:?}", path);
     if path.exists() {
@@ -44,13 +52,18 @@ pub async fn wipe_game_data() -> Result<(), AppError> {
 
 #[tauri::command]
 pub async fn uninstall_game() -> Result<(), AppError> {
-    let game_dir = get_game_dir();
-    let jre_dir = get_jre_dir();
+    if crate::platform::is_game_running() {
+        return Err(AppError::GameRunning);
+    }
 
-    log::info!("Uninstalling game...");
+    let app_dir = get_hycore_data_dir();
+    let game_dir = app_dir.join("game");
+    let jre_dir = app_dir.join("jre");
+
+    log::info!("Uninstalling game (all versions)...");
 
     if game_dir.exists() {
-        log::info!("Removing game directory: {:?}", game_dir);
+        log::info!("Removing entire game directory: {:?}", game_dir);
         fs::remove_dir_all(&game_dir).map_err(AppError::Io)?;
     }
 

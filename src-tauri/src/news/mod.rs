@@ -3,9 +3,24 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::error::AppError;
+use crate::updater::env::get_hycore_data_dir;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-use crate::updater::env::get_hycore_data_dir;
+#[tauri::command]
+pub async fn get_news() -> Result<Vec<NewsItem>, AppError> {
+    log::info!("Fetching news...");
+    match fetch_news().await {
+        Ok(items) => {
+            log::info!("News fetched successfully ({} items)", items.len());
+            Ok(items)
+        }
+        Err(e) => {
+            log::warn!("Failed to fetch news from server, loading cache: {}", e);
+            load_cache().map_err(AppError::from)
+        }
+    }
+}
 
 const CACHE_TTL_SECS: u64 = 3600;
 
