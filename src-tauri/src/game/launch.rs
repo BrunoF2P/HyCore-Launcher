@@ -81,7 +81,7 @@ pub async fn spawn_game_process(
     java_exec: &Path,
     args: LaunchArgs,
     jvm_args: String,
-    client_dir: &Path,
+    #[cfg_attr(target_os = "windows", allow(unused_variables))] client_dir: &Path,
 ) -> Result<(), AppError> {
     log::info!("Launching game: {:?}", executable);
     log::info!("Player: {} (UUID: {})", args.name, args.uuid);
@@ -140,7 +140,6 @@ pub async fn spawn_game_process(
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }

@@ -57,10 +57,11 @@ pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result
     // 5. Ensure Permissions (Linux)
     #[cfg(not(target_os = "windows"))]
     {
-        let executable = client_dir.join("HytaleClient");
-        launch::ensure_permissions(&executable).await?;
+        launch::ensure_permissions(&client_dir.join("HytaleClient")).await?;
     }
 
+    #[cfg(target_os = "windows")]
+    let executable = client_dir.join("HytaleClient.exe");
     #[cfg(not(target_os = "windows"))]
     let executable = client_dir.join("HytaleClient");
 
