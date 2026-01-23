@@ -1,54 +1,102 @@
-use super::cleanup;
 use super::types::LocalVersionInfo;
 use crate::http::HTTP_CLIENT;
 use crate::platform::{get_hytale_arch, get_hytale_os};
-use futures_util::{stream, StreamExt};
+use futures_util::StreamExt;
 
-pub async fn find_latest_version() -> anyhow::Result<u32> {
+pub async fn find_latest_version(channel: &str) -> anyhow::Result<u32> {
     let os = get_hytale_os();
     let arch = get_hytale_arch();
+    let mut max_found = 0;
+    let mut consecutive_failures = 0;
+    const MAX_CONSECUTIVE_FAILURES: u32 = 10;
+    const MAX_PROBE_VERSION: u32 = 10000;
 
-    let tasks = stream::iter(1..=20).map(|v| {
-        let url = format!(
-            "https://game-patches.hytale.com/patches/{}/{}/release/0/{}.pwr",
-            os, arch, v
-        );
-        async move {
-            let resp = HTTP_CLIENT.head(&url).send().await;
-            (v, resp.map(|r| r.status().is_success()).unwrap_or(false))
+    log::info!(
+        "Searching for latest version on channel {} via dynamic probing...",
+        channel
+    );
+
+    // Initial search range 1 to MAX_PROBE_VERSION, probing 20 at a time
+    for chunk_start in (1..MAX_PROBE_VERSION).step_by(20) {
+        let chunk_end = (chunk_start + 20).min(MAX_PROBE_VERSION);
+
+        let results = futures_util::stream::iter(chunk_start..chunk_end)
+            .map(|v| {
+                let os = os.clone();
+                let arch = arch.clone();
+                let channel = channel.to_string();
+                let url = format!(
+                    "https://game-patches.hytale.com/patches/{}/{}/{}/0/{}.pwr",
+                    os, arch, channel, v
+                );
+                async move {
+                    let resp = HTTP_CLIENT
+                        .head(&url)
+                        .timeout(std::time::Duration::from_secs(3))
+                        .send()
+                        .await;
+
+                    match resp {
+                        Ok(r) if r.status().is_success() => Some(v),
+                        _ => None,
+                    }
+                }
+            })
+            .buffer_unordered(10)
+            .collect::<Vec<Option<u32>>>()
+            .await;
+
+        for v_opt in results {
+            if let Some(v) = v_opt {
+                if v > max_found {
+                    max_found = v;
+                }
+                consecutive_failures = 0;
+            } else {
+                if max_found > 0 {
+                    consecutive_failures += 1;
+                }
+            }
         }
-    });
 
-    let _ = cleanup::cleanup_incomplete_downloads();
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+            log::debug!(
+                "Stopping probe: reached {} consecutive failures after version {}",
+                MAX_CONSECUTIVE_FAILURES,
+                max_found
+            );
+            break;
+        }
 
-    let mut results = tasks.buffer_unordered(10);
-    let mut latest = 0;
-
-    while let Some((version, exists)) = results.next().await {
-        if exists && version > latest {
-            latest = version;
+        // Safety: if we probed 100 versions and found nothing, stop.
+        if chunk_start > 100 && max_found == 0 {
+            log::warn!(
+                "No versions found after probing {} potentially valid slots",
+                chunk_start
+            );
+            break;
         }
     }
 
-    if latest == 0 {
+    if max_found == 0 {
         return Err(anyhow::anyhow!(
-            "Could not find any game version on patch server"
+            "Could not find any game version on patch server. Connection issue or incorrect channel?"
         ));
     }
 
-    log::info!("Latest available game version: {}", latest);
-    Ok(latest)
+    log::info!("Latest discovered version: {}", max_found);
+    Ok(max_found)
 }
 
-pub async fn get_remote_metadata(version: u32) -> anyhow::Result<LocalVersionInfo> {
+pub async fn get_remote_metadata(version: u32, channel: &str) -> anyhow::Result<LocalVersionInfo> {
     let client = &HTTP_CLIENT;
 
     let os = get_hytale_os();
     let arch = get_hytale_arch();
 
     let url = format!(
-        "https://game-patches.hytale.com/patches/{}/{}/release/0/{}.pwr",
-        os, arch, version
+        "https://game-patches.hytale.com/patches/{}/{}/{}/0/{}.pwr",
+        os, arch, channel, version
     );
 
     let metadata_response = client
@@ -68,10 +116,12 @@ pub async fn get_remote_metadata(version: u32) -> anyhow::Result<LocalVersionInf
 
     Ok(LocalVersionInfo {
         version,
+        channel: channel.to_string(),
         size: headers
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse().ok()),
+        installed_at: None,
         last_modified: headers
             .get(reqwest::header::LAST_MODIFIED)
             .and_then(|v| v.to_str().ok())

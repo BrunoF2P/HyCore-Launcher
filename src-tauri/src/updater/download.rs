@@ -12,7 +12,12 @@ use super::types::UpdateStatus;
 
 use crate::error::AppError;
 
-pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> anyhow::Result<()> {
+pub async fn download_with_resume(
+    url: &str,
+    dest: &Path,
+    window: &Window,
+    expected_hash: Option<&str>,
+) -> anyhow::Result<()> {
     let client = &crate::http::HTTP_CLIENT;
 
     let mut downloaded = if dest.exists() {
@@ -97,6 +102,11 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> an
 
     if downloaded == total_size {
         log::info!("File already complete");
+        if let Some(hash) = expected_hash {
+            log::info!("Verifying existing file hash...");
+            verify_pwr_file(dest, hash)?;
+            log::info!("Hash verification successful (cached file).");
+        }
         return Ok(());
     }
 
@@ -213,6 +223,20 @@ pub async fn download_with_resume(url: &str, dest: &Path, window: &Window) -> an
         avg_speed
     );
 
+    if let Some(hash) = expected_hash {
+        log::info!("Verifying download integrity...");
+        let _ = window.emit(
+            "update-status",
+            UpdateStatus {
+                stage: "download".to_string(),
+                progress: 100.0,
+                message: "Verifying integrity...".to_string(),
+            },
+        );
+        verify_pwr_file(dest, hash)?;
+        log::info!("Integrity check passed.");
+    }
+
     Ok(())
 }
 
@@ -221,9 +245,10 @@ pub async fn download_with_retry(
     dest: &Path,
     window: &Window,
     retries: u32,
+    expected_hash: Option<&str>,
 ) -> anyhow::Result<()> {
     for attempt in 0..retries {
-        match download_with_resume(url, dest, window).await {
+        match download_with_resume(url, dest, window, expected_hash).await {
             Ok(_) => {
                 let file_size = fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
 
@@ -259,15 +284,29 @@ pub async fn download_with_retry(
     Err(anyhow::anyhow!("Max retries reached"))
 }
 
-#[allow(dead_code)]
 pub fn verify_pwr_file(path: &Path, expected_hash: &str) -> anyhow::Result<()> {
+    // If expected hash is empty or dummy, skip verification
+    if expected_hash.is_empty() || expected_hash == "SKIP" {
+        return Ok(());
+    }
+
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
     std::io::copy(&mut file, &mut hasher)?;
 
     let hash = format!("{:x}", hasher.finalize());
-    if hash != expected_hash {
-        return Err(anyhow::anyhow!("File corrupted: hash mismatch"));
+
+    // Case insensitive comparison
+    if !hash.eq_ignore_ascii_case(expected_hash) {
+        // Log both for debugging
+        log::error!(
+            "Hash mismatch! Expected: {}, Computed: {}",
+            expected_hash,
+            hash
+        );
+        return Err(anyhow::anyhow!(
+            "File integrity check failed: Hash mismatch"
+        ));
     }
     Ok(())
 }
@@ -280,7 +319,23 @@ pub async fn validate_pwr_file(version: u32) -> Result<bool, AppError> {
         return Ok(false);
     }
 
-    let file_size = fs::metadata(&pwr_path).map(|m| m.len()).unwrap_or(0);
+    let metadata = fs::metadata(&pwr_path).map_err(|e| AppError::Io(e))?;
+    if metadata.len() < 1_000_000 {
+        return Ok(false);
+    }
 
-    Ok(file_size > 1_000_000)
+    // Check Magic Bytes for ZIP (PK\x03\x04)
+    let mut file = fs::File::open(&pwr_path).map_err(|e| AppError::Io(e))?;
+    let mut magic = [0u8; 4];
+    use std::io::Read;
+    if file.read_exact(&mut magic).is_err() {
+        return Ok(false);
+    }
+
+    if magic != [0x50, 0x4B, 0x03, 0x04] {
+        log::warn!("File {}.pwr has invalid magic bytes: {:X?}", version, magic);
+        return Ok(false);
+    }
+
+    Ok(true)
 }

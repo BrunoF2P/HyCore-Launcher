@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -56,34 +57,82 @@ pub async fn ensure_butler(window: &tauri::Window) -> anyhow::Result<PathBuf> {
         UpdateStatus {
             stage: "butler".to_string(),
             progress: 10.0,
-            message: "Downloading update tools...".to_string(),
+            message: "Fetching update tools metadata...".to_string(),
         },
     );
 
     let os = crate::platform::get_butler_os();
 
-    let url = format!(
-        "https://broth.itch.zone/butler/{}-amd64/LATEST/archive/default",
-        os
+    // Fetch latest version string to build accurate URL
+    let latest_url = format!("https://broth.itch.zone/butler/{}-amd64/LATEST", os);
+    let version = crate::http::HTTP_CLIENT
+        .get(latest_url)
+        .send()
+        .await?
+        .text()
+        .await?
+        .trim()
+        .to_string();
+
+    let download_url = format!(
+        "https://broth.itch.zone/butler/{}-amd64/{}/archive/default",
+        os, version
     );
 
-    let response = crate::http::HTTP_CLIENT.get(url).send().await?;
-    let content = response.bytes().await?;
+    log::info!("Downloading Butler {} from: {}", version, download_url);
+
+    let _ = window.emit(
+        "update-status",
+        UpdateStatus {
+            stage: "butler".to_string(),
+            progress: 20.0,
+            message: format!("Downloading Butler {}...", version),
+        },
+    );
+
+    let response = crate::http::HTTP_CLIENT.get(download_url).send().await?;
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to download Butler: {}",
+            response.status()
+        ));
+    }
 
     let mut zip_path = get_hycore_data_dir();
     zip_path.push("butler.zip");
-    fs::write(&zip_path, content)?;
+
+    {
+        let mut file = fs::File::create(&zip_path)?;
+        let mut stream = response.bytes_stream();
+        while let Some(item) = stream.next().await {
+            let chunk = item.map_err(|e| anyhow::anyhow!("Error while downloading: {}", e))?;
+            std::io::copy(&mut &*chunk, &mut file)?;
+        }
+    }
+
+    let file_size = fs::metadata(&zip_path)?.len();
+    if file_size < 1_000_000 {
+        let _ = fs::remove_file(&zip_path);
+        return Err(anyhow::anyhow!(
+            "Butler download too small ({} bytes), likely corrupted",
+            file_size
+        ));
+    }
 
     let _ = window.emit(
         "update-status",
         UpdateStatus {
             stage: "butler".to_string(),
             progress: 80.0,
-            message: "Extracting tools...".to_string(),
+            message: "Verifying and extracting tools...".to_string(),
         },
     );
 
-    extract_zip(&zip_path, &butler_path.parent().unwrap())?;
+    // Initial ZIP check (will error if invalid)
+    let dest_parent = butler_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Invalid butler path parent"))?;
+    extract_zip(&zip_path, dest_parent)?;
 
     let _ = fs::remove_file(zip_path);
 

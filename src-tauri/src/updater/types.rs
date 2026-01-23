@@ -17,7 +17,15 @@ pub struct SystemRequirements {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct LocalVersionInfo {
     pub version: u32,
+    pub channel: String,
     pub size: Option<u64>,
+    pub installed_at: Option<String>,
     pub last_modified: Option<String>,
     pub etag: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct LocalManifest {
+    pub active_version: u32,
+    pub installed: Vec<LocalVersionInfo>,
 }

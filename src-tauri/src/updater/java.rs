@@ -10,19 +10,20 @@ use super::types::UpdateStatus;
 const JRE_VERSION: &str = "25";
 
 #[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-struct JrePlatform {
-    url: String,
-    sha256: String,
+struct AdoptiumAsset {
+    binary: AdoptiumBinary,
 }
 
 #[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-struct JreConfig {
-    #[allow(dead_code)]
-    version: String,
-    #[allow(dead_code)]
-    download_url: std::collections::HashMap<String, std::collections::HashMap<String, JrePlatform>>,
+struct AdoptiumBinary {
+    #[serde(rename = "package")]
+    package_info: AdoptiumPackage,
+}
+
+#[derive(Deserialize, Debug)]
+struct AdoptiumPackage {
+    checksum: String,
+    link: String,
 }
 
 pub fn get_java_bin_path() -> PathBuf {
@@ -50,7 +51,7 @@ pub async fn ensure_java(window: &Window) -> anyhow::Result<PathBuf> {
         UpdateStatus {
             stage: "jre".to_string(),
             progress: 0.0,
-            message: "Initializing Java Runtime download...".to_string(),
+            message: "Fetching Java Runtime metadata...".to_string(),
         },
     );
 
@@ -61,15 +62,39 @@ pub async fn ensure_java(window: &Window) -> anyhow::Result<PathBuf> {
     fs::create_dir_all(&jre_dir)?;
 
     let os = crate::platform::get_java_os();
-
     let arch = crate::platform::get_java_arch();
 
-    let url = format!(
-        "https://api.adoptium.net/v3/binary/latest/{}/ga/{}/{}/jre/hotspot/normal/eclipse?project=jdk",
-        JRE_VERSION, os, arch
+    let metadata_url = format!(
+        "https://api.adoptium.net/v3/assets/latest/{}/hotspot?architecture={}&image_type=jre&os={}&vendor=eclipse",
+        JRE_VERSION, arch, os
     );
 
-    log::info!("Downloading JRE from: {}", url);
+    log::info!("Fetching JRE metadata from: {}", metadata_url);
+    let assets: Vec<AdoptiumAsset> = crate::http::HTTP_CLIENT
+        .get(metadata_url)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let asset = assets
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("No JRE assets found for {}/{}", os, arch))?;
+
+    let download_url = &asset.binary.package_info.link;
+    let expected_checksum = &asset.binary.package_info.checksum;
+
+    log::info!("Downloading JRE from: {}", download_url);
+    log::info!("Expected SHA256: {}", expected_checksum);
+
+    let _ = window.emit(
+        "update-status",
+        UpdateStatus {
+            stage: "jre".to_string(),
+            progress: 10.0,
+            message: "Downloading Java Runtime...".to_string(),
+        },
+    );
 
     let archive_ext = if cfg!(target_os = "windows") {
         "zip"
@@ -78,7 +103,30 @@ pub async fn ensure_java(window: &Window) -> anyhow::Result<PathBuf> {
     };
     let archive_path = super::env::get_hycore_data_dir().join(format!("jre.{}", archive_ext));
 
-    download_with_retry(&url, &archive_path, window, 3).await?;
+    download_with_retry(
+        download_url,
+        &archive_path,
+        window,
+        3,
+        Some(expected_checksum),
+    )
+    .await?;
+
+    let _ = window.emit(
+        "update-status",
+        UpdateStatus {
+            stage: "jre".to_string(),
+            progress: 85.0,
+            message: "Verifying integrity...".to_string(),
+        },
+    );
+
+    if !crate::platform::verify_file_checksum(&archive_path, expected_checksum)? {
+        let _ = fs::remove_file(&archive_path);
+        return Err(anyhow::anyhow!(
+            "JRE download corrupted (checksum mismatch)"
+        ));
+    }
 
     let _ = window.emit(
         "update-status",

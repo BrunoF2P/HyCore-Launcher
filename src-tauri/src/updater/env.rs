@@ -10,6 +10,17 @@ pub fn get_hycore_data_dir() -> PathBuf {
 
 pub fn get_game_dir() -> PathBuf {
     let active = crate::mods::manifest::get_active_profile();
+
+    // If we have an active version in settings, use the SHARED versions folder
+    let settings = crate::settings::load_settings();
+    if settings.active_version > 0 {
+        return get_hycore_data_dir()
+            .join("game")
+            .join("versions")
+            .join(settings.active_version.to_string());
+    }
+
+    // Fallback to profile-specific game folder for legacy/non-versioned
     if active == "Default" {
         get_hycore_data_dir().join("game")
     } else {
@@ -18,6 +29,14 @@ pub fn get_game_dir() -> PathBuf {
             .join(active)
             .join("game")
     }
+}
+
+pub fn get_version_dir(version: u32) -> PathBuf {
+    // Versions are ALWAYS stored in the global 'game/versions' folder
+    get_hycore_data_dir()
+        .join("game")
+        .join("versions")
+        .join(version.to_string())
 }
 
 pub fn get_client_dir() -> PathBuf {
@@ -36,16 +55,13 @@ pub fn get_user_data_dir() -> PathBuf {
     }
 }
 
+pub fn get_versions_manifest_path() -> PathBuf {
+    // Shared manifest for ALL profiles to know what is downloaded
+    get_hycore_data_dir().join("game").join("versions.json")
+}
+
 pub fn get_version_file_path() -> PathBuf {
-    let active = crate::mods::manifest::get_active_profile();
-    if active == "Default" {
-        get_hycore_data_dir().join("version.json")
-    } else {
-        get_hycore_data_dir()
-            .join("instances")
-            .join(active)
-            .join("version.json")
-    }
+    get_versions_manifest_path()
 }
 
 pub fn get_legacy_version_file_path() -> PathBuf {
