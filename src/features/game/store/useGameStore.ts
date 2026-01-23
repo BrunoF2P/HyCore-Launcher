@@ -10,6 +10,7 @@ interface GameState {
     latestVersion: number;
     installedVersions: any[];
     activeVersion: number;
+    manifest: any | null;
     lastError: string | null;
     setButtonState: (state: ButtonState) => void;
     checkForUpdates: () => Promise<void>;
@@ -25,6 +26,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     latestVersion: 0,
     installedVersions: [],
     activeVersion: 0,
+    manifest: null,
     lastError: null,
 
     setButtonState: (state) => set({ buttonState: state }),
@@ -35,7 +37,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const manifest = await invoke<any>('get_local_manifest_command');
             set({
                 installedVersions: manifest.installed,
-                activeVersion: manifest.active_version
+                activeVersion: manifest.active_version,
+                manifest
             });
         } catch (err) {
             console.error('Failed to fetch local versions:', err);

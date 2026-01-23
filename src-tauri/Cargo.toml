@@ -1,6 +1,6 @@
 [package]
 name = "hycore"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Tauri App"
 authors = ["BrunoF2P"]
 edition = "2021"
@@ -52,5 +52,5 @@ opt-level = "z"     # Optimize for size. Use 3 for maximum speed.
 lto = true          # Enable Link Time Optimization
 codegen-units = 1   # Reduce parallel code generation units for better optimization
 panic = "abort"     # Remove stack unwinding code to save space
-strip = true        # Automatically strip symbols from the binary
+strip = false        # Disable stripping to allow Tauri to patch the binary for bundling/updates
 

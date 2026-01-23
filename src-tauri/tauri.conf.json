@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HyCore",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.hycore.launcher",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -48,12 +48,20 @@
       "nsis",
       "msi"
     ],
+    "shortDescription": "A powerful Hytale game launcher.",
+    "category": "Game",
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.png"
     ]
   }
 }
