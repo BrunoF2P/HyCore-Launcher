@@ -1,6 +1,6 @@
 [package]
 name = "hycore"
-version = "0.1.6"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["BrunoF2P"]
 edition = "2021"
@@ -43,6 +43,9 @@ once_cell = "1.21.3"
 thiserror = "2.0.18"
 anyhow = "1.0.100"
 time = { version = "0.3.45", features = ["serde-human-readable", "formatting", "parsing", "local-offset", "macros"] }
+rusqlite = { version = "0.33.0", features = ["bundled"] }
+uuid = { version = "1", features = ["v3", "v4"] }
+base64 = "0.22"
 
 [profile.release]
 opt-level = "z"     # Optimize for size. Use 3 for maximum speed.

@@ -83,41 +83,43 @@ export const useModStore = create<ModState>((set, get) => ({
     },
 
     installMod: async (mod: CurseForgeMod) => {
-        set(state => ({ installingIds: [...state.installingIds, mod.id] }));
+        set(state => ({ installingIds: [...state.installingIds, mod.id], error: null }));
         try {
             await invoke('install_mod_cf', { modId: mod.id, fileId: null });
             await get().fetchInstalledMods();
         } catch (err: any) {
             console.error('Install failed:', err);
-            throw err;
+            set({ error: String(err) });
         } finally {
             set(state => ({ installingIds: state.installingIds.filter(id => id !== mod.id) }));
         }
     },
 
     removeMod: async (modId: string) => {
+        set({ error: null });
         try {
             await invoke('remove_mod', { modId });
             await get().fetchInstalledMods();
         } catch (err: any) {
             console.error('Remove failed:', err);
-            throw err;
+            set({ error: String(err) });
         }
     },
 
     toggleMod: async (modId: string, enabled: boolean) => {
+        set({ error: null });
         try {
             await invoke('toggle_mod', { modId, enabled });
             await get().fetchInstalledMods();
         } catch (err: any) {
             console.error('Toggle failed:', err);
-            throw err;
+            set({ error: String(err) });
         }
     },
 
     updateMod: async (mod: InstalledMod) => {
         if (!mod.curseForgeId || !mod.latestFileId) return;
-        set(state => ({ installingIds: [...state.installingIds, mod.curseForgeId!] }));
+        set(state => ({ installingIds: [...state.installingIds, mod.curseForgeId!], error: null }));
         try {
             await invoke('install_mod_cf', {
                 modId: mod.curseForgeId,
@@ -126,23 +128,25 @@ export const useModStore = create<ModState>((set, get) => ({
             await get().fetchInstalledMods();
         } catch (err: any) {
             console.error('Update failed:', err);
-            throw err;
+            set({ error: String(err) });
         } finally {
             set(state => ({ installingIds: state.installingIds.filter(id => id !== mod.curseForgeId) }));
         }
     },
 
     createProfile: async (name: string, empty: boolean) => {
+        set({ error: null });
         try {
             await invoke('create_profile', { name, empty });
             await get().fetchProfiles();
         } catch (err: any) {
             console.error('Failed to create profile:', err);
-            throw err;
+            set({ error: String(err) });
         }
     },
 
     deleteProfile: async (name: string) => {
+        set({ error: null });
         try {
             await invoke('delete_profile', { name });
             await get().fetchProfiles();
@@ -152,11 +156,12 @@ export const useModStore = create<ModState>((set, get) => ({
             }
         } catch (err: any) {
             console.error('Failed to delete profile:', err);
-            throw err;
+            set({ error: String(err) });
         }
     },
 
     setActiveProfile: async (name: string) => {
+        set({ error: null });
         try {
             await invoke('set_active_profile', { name });
             set({ activeProfile: name });
@@ -164,7 +169,7 @@ export const useModStore = create<ModState>((set, get) => ({
             await get().fetchProfiles();
         } catch (err: any) {
             console.error('Failed to set active profile:', err);
-            throw err;
+            set({ error: String(err) });
         }
     }
 }));

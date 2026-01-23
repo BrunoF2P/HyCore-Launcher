@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useGameStore } from "../store/useGameStore";
 import { useUpdateStore } from "../store/updateStore";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import { VersionSelector } from "./VersionSelector";
 
 export const LaunchSection = () => {
     const { t } = useTranslation();
@@ -93,6 +94,8 @@ export const LaunchSection = () => {
                     <span className="text-[10px] font-bold uppercase tracking-wider">{t('update.complete')}</span>
                 </div>
             )}
+
+            <VersionSelector />
 
             <button
                 className={`group relative overflow-hidden flex items-center justify-center w-64 h-16 rounded bg-gradient-to-br ${buttonColor} text-black text-2xl font-black uppercase tracking-tighter transition-all hover:scale-[1.02] hover:shadow-[0_0_25px_rgba(255,179,0,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isDisabled ? 'cursor-wait' : 'cursor-pointer'}`}

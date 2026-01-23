@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { X, Cpu, Save, Settings, Bot } from "lucide-react";
+import { X, Cpu, Save, Settings, Bot, Languages, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../store/useSettingsStore";
@@ -14,6 +14,8 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
     const [localSettings, setLocalSettings] = useState(settings);
     const [systemRamGb, setSystemRamGb] = useState<number>(32); // Default fallback
 
+    const [showAdvanced, setShowAdvanced] = useState(false);
+
     useEffect(() => {
         loadSettings();
         // Fetch system RAM
@@ -26,6 +28,10 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
 
     useEffect(() => {
         setLocalSettings(settings);
+        // If custom args are not empty or RAM is not default, show advanced
+        if (settings.custom_java_args.length > 0) {
+            setShowAdvanced(true);
+        }
     }, [settings]);
 
     const handleSave = async () => {
@@ -62,54 +68,91 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
 
                     {/* Java Performance section */}
                     <section className="space-y-6">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Cpu className="w-4 h-4 text-sky-400/60" />
-                            <h3 className="text-sm font-bold uppercase tracking-wider text-white/50">{t('settings.java_performance')}</h3>
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <Cpu className="w-4 h-4 text-sky-400/60" />
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-white/50">{t('settings.java_performance')}</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                className={`px-4 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-tighter transition-all ${showAdvanced
+                                    ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                                    }`}
+                            >
+                                {showAdvanced ? t('settings.advanced_on') : t('settings.advanced_off')}
+                            </button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-white/70 flex justify-between">
-                                    <span>{t('settings.ram_min')}</span>
-                                    <span className="text-sky-400">{localSettings.ram_min_gb} GB</span>
-                                </label>
-                                <input
-                                    type="range"
-                                    min="1"
-                                    max={Math.max(4, Math.floor(systemRamGb / 2))}
-                                    step="1"
-                                    value={localSettings.ram_min_gb}
-                                    onChange={(e) => setLocalSettings({ ...localSettings, ram_min_gb: parseInt(e.target.value) })}
-                                    className="w-full accent-sky-400 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-white/70 flex justify-between">
-                                    <span>{t('settings.ram_max')}</span>
-                                    <span className="text-sky-400">{localSettings.ram_max_gb} GB</span>
-                                </label>
-                                <input
-                                    type="range"
-                                    min="2"
-                                    max={systemRamGb}
-                                    step="1"
-                                    value={localSettings.ram_max_gb}
-                                    onChange={(e) => setLocalSettings({ ...localSettings, ram_max_gb: parseInt(e.target.value) })}
-                                    className="w-full accent-sky-400 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                                />
-                            </div>
-                        </div>
+                        {showAdvanced ? (
+                            <div className="space-y-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-white/70 flex justify-between">
+                                            <span>{t('settings.ram_allocation')}</span>
+                                            <span className="text-sky-400">{localSettings.ram_gb} GB</span>
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min="2"
+                                            max={systemRamGb}
+                                            step="1"
+                                            value={localSettings.ram_gb}
+                                            onChange={(e) => setLocalSettings({ ...localSettings, ram_gb: parseInt(e.target.value) })}
+                                            className="w-full accent-sky-400 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                                        />
+                                        <p className="text-[10px] text-white/30 italic">
+                                            {t('settings.ram_recommendation')}
+                                        </p>
+                                    </div>
+                                </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-white/70">{t('settings.custom_jvm_args')}</label>
-                            <input
-                                type="text"
-                                value={localSettings.custom_java_args}
-                                onChange={(e) => setLocalSettings({ ...localSettings, custom_java_args: e.target.value })}
-                                placeholder="-XX:+UseG1GC -Xmx4G ..."
-                                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-sky-400/50 focus:bg-white/[0.08] transition-all"
-                            />
-                        </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-white/70">{t('settings.custom_jvm_args')}</label>
+                                    <input
+                                        type="text"
+                                        value={localSettings.custom_java_args}
+                                        onChange={(e) => setLocalSettings({ ...localSettings, custom_java_args: e.target.value })}
+                                        placeholder="-XX:+UseZGC -XshowSettings:vm"
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-sky-400/50 focus:bg-white/[0.08] transition-all"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-white/70">Sistema Operacional (Download)</label>
+                                        <select
+                                            value={localSettings.override_os || "auto"}
+                                            onChange={(e) => setLocalSettings({ ...localSettings, override_os: e.target.value === "auto" ? null : e.target.value })}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm appearance-none focus:outline-none focus:border-sky-400/50 hover:bg-white/[0.08] transition-all cursor-pointer text-white/80"
+                                        >
+                                            <option value="auto" className="bg-[#1a1f2e]">Automático (Detectado)</option>
+                                            <option value="windows" className="bg-[#1a1f2e]">Windows</option>
+                                            <option value="linux" className="bg-[#1a1f2e]">Linux</option>
+                                            <option value="darwin" className="bg-[#1a1f2e]">macOS (Darwin)</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-white/70">Arquitetura (Download)</label>
+                                        <select
+                                            value={localSettings.override_arch || "auto"}
+                                            onChange={(e) => setLocalSettings({ ...localSettings, override_arch: e.target.value === "auto" ? null : e.target.value })}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm appearance-none focus:outline-none focus:border-sky-400/50 hover:bg-white/[0.08] transition-all cursor-pointer text-white/80"
+                                        >
+                                            <option value="auto" className="bg-[#1a1f2e]">Automático (Detectado)</option>
+                                            <option value="amd64" className="bg-[#1a1f2e]">x64 (amd64)</option>
+                                            <option value="arm64" className="bg-[#1a1f2e]">ARM64 (aarch64)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 animate-in fade-in duration-300">
+                                <p className="text-xs text-white/40 leading-relaxed max-w-[300px]">
+                                    {t('settings.advanced_hint')}
+                                </p>
+                            </div>
+                        )}
                     </section>
 
                     {/* Behavior section */}
@@ -158,6 +201,58 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                     className="w-5 h-5 accent-sky-400 rounded border-white/10"
                                 />
                             </label>
+
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl space-y-4">
+                                <div className="space-y-0.5">
+                                    <span className="font-semibold text-white/90">{t('settings.update_channel')}</span>
+                                    <p className="text-xs text-white/40">{t('settings.update_channel_desc')}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => setLocalSettings({ ...localSettings, channel: 'release' })}
+                                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${localSettings.channel === 'release'
+                                            ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                                            : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        {t('settings.release')}
+                                    </button>
+                                    <button
+                                        onClick={() => setLocalSettings({ ...localSettings, channel: 'pre-release' })}
+                                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${localSettings.channel === 'pre-release'
+                                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                                            : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        {t('settings.prerelease')}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <Languages className="w-4 h-4 text-sky-400/60" />
+                                            <span className="font-semibold text-white/90">{t('settings.language')}</span>
+                                        </div>
+                                        <p className="text-xs text-white/40">{t('settings.language_desc')}</p>
+                                    </div>
+                                    <div className="relative min-w-[160px]">
+                                        <select
+                                            value={localSettings.language}
+                                            onChange={(e) => setLocalSettings({ ...localSettings, language: e.target.value })}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg pl-4 pr-10 py-2.5 text-sm appearance-none focus:outline-none focus:border-sky-400/50 hover:bg-white/[0.08] transition-all cursor-pointer text-white/80"
+                                        >
+                                            <option value="auto" className="bg-[#1a1f2e]">{t('settings.language_auto')}</option>
+                                            <option value="en" className="bg-[#1a1f2e]">{t('settings.language_en')}</option>
+                                            <option value="pt" className="bg-[#1a1f2e]">{t('settings.language_pt')}</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none" />
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
                     </section>
 

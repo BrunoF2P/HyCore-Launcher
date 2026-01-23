@@ -13,14 +13,17 @@
         "enter_name": "Digite seu novo nome de usuário:",
         "uninstall_failed": "Falha ao desinstalar o jogo",
         "click_to_edit": "Clique para editar",
-        "settings": "Ajustes"
+        "settings": "Ajustes",
+        "dev_badge": "DEV",
+        "versions": "Versões",
+        "installed_versions": "Versões Instaladas"
     },
     "settings": {
         "title": "Configurações do Launcher",
         "subtitle": "Gerenciamento Hycore",
         "java_performance": "Performance Java",
-        "ram_min": "RAM Mínima (GB)",
-        "ram_max": "RAM Máxima (GB)",
+        "ram_allocation": "Alocação de RAM (GB)",
+        "ram_recommendation": "Alocação única (Xms=Xmx) recomendada para evitar stuttering.",
         "custom_jvm_args": "Argumentos da JVM (Customizados)",
         "behavior_social": "Comportamento e Social",
         "discord_rpc": "Discord Rich Presence",
@@ -29,6 +32,18 @@
         "minimize_to_tray_desc": "Ao fechar o launcher, ele continuará rodando na tray.",
         "close_on_launch": "Fechar ao Iniciar Jogo",
         "close_on_launch_desc": "O launcher será encerrado automaticamente ao abrir o jogo.",
+        "update_channel": "Canal de Atualização",
+        "update_channel_desc": "Alterne entre versões estáveis e de teste.",
+        "release": "Estável (Release)",
+        "prerelease": "Teste (Pre-release)",
+        "language": "Idioma do Launcher",
+        "language_desc": "Escolha o idioma de exibição da interface.",
+        "language_auto": "Automático",
+        "language_en": "Inglês",
+        "language_pt": "Português",
+        "advanced_on": "Modo Avançado: Ligado",
+        "advanced_off": "Modo Avançado: Desligado",
+        "advanced_hint": "Habilite o Modo Avançado para ajustar a alocação de RAM e argumentos da JVM.",
         "save_changes": "Salvar Alterações"
     },
     "mods": {
@@ -69,7 +84,8 @@
         "toggle_failed": "Falha ao alterar estado do mod",
         "active_profile": "Perfil Ativo",
         "categories": "Categorias",
-        "all_mods": "Todos os Mods"
+        "all_mods": "Todos os Mods",
+        "loading": "Carregando Mods..."
     },
     "news": {
         "latest_updates": "Últimas Atualizações",
@@ -124,6 +140,14 @@
     "self_update": {
         "title": "Atualização do Launcher",
         "message": "Uma nova versão do launcher {{version}} está disponível! Deseja atualizar agora?"
+    },
+    "error": {
+        "fatal_title": "Erro Fatal",
+        "try_again": "Tentar Novamente",
+        "local_db": "Erro ao carregar banco de dados local.",
+        "switch_version": "Não foi possível trocar a versão ativa.",
+        "check_update": "Não foi possível verificar atualizações. Rodando versão local.",
+        "launch_failed": "Falha ao iniciar o jogo"
     },
     "profiles": {
         "title": "Perfis de Mods",

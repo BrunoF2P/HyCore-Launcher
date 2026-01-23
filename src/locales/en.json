@@ -13,14 +13,17 @@
         "enter_name": "Enter your new username:",
         "uninstall_failed": "Failed to uninstall game",
         "click_to_edit": "Click to edit",
-        "settings": "Settings"
+        "settings": "Settings",
+        "dev_badge": "DEV",
+        "versions": "Versions",
+        "installed_versions": "Installed Versions"
     },
     "settings": {
         "title": "Launcher Settings",
         "subtitle": "Hycore Management",
         "java_performance": "Java Performance",
-        "ram_min": "Minimum RAM (GB)",
-        "ram_max": "Maximum RAM (GB)",
+        "ram_allocation": "RAM Allocation (GB)",
+        "ram_recommendation": "Unified allocation (Xms=Xmx) recommended to avoid stuttering.",
         "custom_jvm_args": "Custom JVM Arguments",
         "behavior_social": "Behavior & Social",
         "discord_rpc": "Discord Rich Presence",
@@ -29,6 +32,18 @@
         "minimize_to_tray_desc": "When closing the launcher, it will continue running in the system tray.",
         "close_on_launch": "Close on Game Launch",
         "close_on_launch_desc": "The launcher will automatically close when the game starts.",
+        "update_channel": "Update Channel",
+        "update_channel_desc": "Switch between stable and test versions.",
+        "release": "Stable (Release)",
+        "prerelease": "Test (Pre-release)",
+        "language": "Launcher Language",
+        "language_desc": "Choose the display language for the interface.",
+        "language_auto": "Automatic",
+        "language_en": "English",
+        "language_pt": "Portuguese",
+        "advanced_on": "Advanced Mode: On",
+        "advanced_off": "Advanced Mode: Off",
+        "advanced_hint": "Enable Advanced Mode to adjust RAM allocation and JVM arguments.",
         "save_changes": "Save Changes"
     },
     "mods": {
@@ -69,7 +84,8 @@
         "toggle_failed": "Failed to toggle mod",
         "active_profile": "Active Profile",
         "categories": "Categories",
-        "all_mods": "All Mods"
+        "all_mods": "All Mods",
+        "loading": "Loading Mods..."
     },
     "news": {
         "latest_updates": "Latest Updates",
@@ -124,6 +140,14 @@
     "self_update": {
         "title": "Launcher Update",
         "message": "A new launcher version {{version}} is available! Do you want to update now?"
+    },
+    "error": {
+        "fatal_title": "Fatal Error",
+        "try_again": "Try Again",
+        "local_db": "Failed to load local database.",
+        "switch_version": "Could not switch active version.",
+        "check_update": "Could not check for updates. Running local version.",
+        "launch_failed": "Failed to launch game"
     },
     "profiles": {
         "title": "Mod Profiles",

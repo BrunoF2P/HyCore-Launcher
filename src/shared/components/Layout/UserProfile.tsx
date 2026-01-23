@@ -5,10 +5,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { useLauncherStore } from "../../../features/system/store/useLauncherStore";
 import { useGameStore } from "../../../features/game/store/useGameStore";
+import { useSettingsStore } from "../../../features/settings/store/useSettingsStore";
 
 export const UserProfile = () => {
     const { t } = useTranslation();
-    const [playerName, setPlayerName] = useState("");
+    const { settings, updateSettings } = useSettingsStore();
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -19,12 +20,10 @@ export const UserProfile = () => {
     const isCheckingUpdates = launcherChecking || buttonState === 'checking';
 
     useEffect(() => {
-        // Load player name on mount
-        invoke<string>("get_player_name_command").then((name) => {
-            setPlayerName(name);
-            setEditValue(name);
-        });
+        setEditValue(settings.player_name);
+    }, [settings.player_name]);
 
+    useEffect(() => {
         // Get app version
         getVersion().then(setAppVersion).catch(console.error);
     }, []);
@@ -34,8 +33,7 @@ export const UserProfile = () => {
 
         setSaveStatus('saving');
         try {
-            await invoke("set_player_name_command", { name: editValue });
-            setPlayerName(editValue);
+            await updateSettings({ player_name: editValue.trim() });
             setSaveStatus('saved');
             setIsEditing(false);
             setTimeout(() => setSaveStatus('idle'), 2000);
@@ -47,7 +45,7 @@ export const UserProfile = () => {
     };
 
     const handleCancel = () => {
-        setEditValue(playerName);
+        setEditValue(settings.player_name);
         setIsEditing(false);
         setSaveStatus('idle');
     };
@@ -102,7 +100,7 @@ export const UserProfile = () => {
                         className="text-lg font-black text-white leading-tight cursor-pointer hover:text-hyamber transition-colors group relative flex items-center gap-2"
                         onClick={() => setIsEditing(true)}
                     >
-                        <span>{playerName}</span>
+                        <span>{settings.player_name}</span>
                         <Pencil className="w-3 h-3 text-zinc-500 group-hover:text-hyamber transition-colors" />
                         {saveStatus === 'saved' && (
                             <span className="text-emerald-500">
