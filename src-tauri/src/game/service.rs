@@ -1,6 +1,6 @@
 use crate::error::AppError;
-use std::path::PathBuf;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 pub trait GameHost: Send + Sync {
@@ -71,12 +71,6 @@ impl GameService {
         // 4. Ensure Java
         let java_exec = host.ensure_java().await?;
 
-        // 5. Ensure Permissions (Linux)
-        #[cfg(not(target_os = "windows"))]
-        {
-            super::launch::ensure_permissions(&client_dir.join("HytaleClient")).await?;
-        }
-
         #[cfg(target_os = "windows")]
         let executable = client_dir.join("HytaleClient.exe");
         #[cfg(not(target_os = "windows"))]
@@ -85,6 +79,13 @@ impl GameService {
         // Online Mode Patching
         if settings.online_mode {
             Self::handle_online_patches(&settings, &executable, &client_dir).await?;
+        }
+
+        // 5. Ensure Permissions (Linux/Unix) - MUST happen after patching
+        #[cfg(not(target_os = "windows"))]
+        {
+            log::info!("Ensuring executable permissions after potential patching...");
+            super::launch::ensure_permissions(&executable).await?;
         }
 
         // 6. Launch
@@ -114,7 +115,8 @@ impl GameService {
 
         let jvm_args = super::launch::construct_jvm_args(&settings);
 
-        super::launch::spawn_game_process(&executable, &java_exec, args, jvm_args, &client_dir).await?;
+        super::launch::spawn_game_process(&executable, &java_exec, args, jvm_args, &client_dir)
+            .await?;
 
         log::info!("Game launched successfully");
 

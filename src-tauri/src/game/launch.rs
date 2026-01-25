@@ -29,11 +29,21 @@ pub async fn ensure_permissions(executable: &Path) -> Result<(), AppError> {
     if let Ok(metadata) = tokio::fs::metadata(executable).await {
         let mut perms = metadata.permissions();
         if perms.mode() & 0o111 == 0 {
-            log::info!("Setting execution permissions for {:?}", executable);
+            log::info!("Setting execution permissions (0o755) for {:?}", executable);
             perms.set_mode(0o755);
-            if let Err(e) = tokio::fs::set_permissions(executable, perms).await {
-                log::warn!("Failed to set permissions (non-fatal): {}", e);
+            match tokio::fs::set_permissions(executable, perms).await {
+                Ok(_) => log::info!(
+                    "Successfully set execution permissions for {:?}",
+                    executable
+                ),
+                Err(e) => log::error!(
+                    "CRITICAL: Failed to set execution permissions for {:?}: {}",
+                    executable,
+                    e
+                ),
             }
+        } else {
+            log::debug!("Execution permissions already set for {:?}", executable);
         }
     }
     Ok(())
