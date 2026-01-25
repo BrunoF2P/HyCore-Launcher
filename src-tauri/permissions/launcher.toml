@@ -1,0 +1,68 @@
+[[permission]]
+identifier = "allow-news-commands"
+description = "Permits fetching news from the Hytle API."
+commands.allow = ["get_news"]
+
+[[permission]]
+identifier = "allow-updater-commands"
+description = "Permits checking for updates and performing game updates."
+commands.allow = [
+    "check_update_requirements",
+    "check_for_game_update",
+    "start_game_update",
+    "validate_pwr_file",
+    "java_bin_path_command",
+    "get_local_manifest_command",
+    "switch_version_command",
+    "get_available_versions_command"
+]
+
+[[permission]]
+identifier = "allow-game-commands"
+description = "Permits launching the game."
+commands.allow = ["launch_game"]
+
+[[permission]]
+identifier = "allow-player-commands"
+description = "Permits managing player name."
+commands.allow = [
+    "get_player_name_command",
+    "set_player_name_command"
+]
+
+[[permission]]
+identifier = "allow-mod-commands"
+description = "Permits searching, installing, and managing mods."
+commands.allow = [
+    "search_mods_cf",
+    "get_installed_mods",
+    "install_mod_cf",
+    "remove_mod",
+    "toggle_mod",
+    "get_categories",
+    "get_active_profile",
+    "set_active_profile",
+    "list_profiles",
+    "create_profile",
+    "delete_profile",
+    "check_mods_updates"
+]
+
+[[permission]]
+identifier = "allow-system-commands"
+description = "Permits system-level operations like opening folders/URLs and cleaning data."
+commands.allow = [
+    "open_game_folder",
+    "open_url",
+    "wipe_game_data",
+    "uninstall_game",
+    "get_system_ram_gb"
+]
+
+[[permission]]
+identifier = "allow-settings-commands"
+description = "Permits managing launcher settings."
+commands.allow = [
+    "get_game_settings",
+    "set_game_settings"
+]

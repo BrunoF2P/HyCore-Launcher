@@ -1,0 +1,22 @@
+[[set]]
+identifier = "launcher-all"
+description = "Grants all launcher-specific permissions."
+permissions = [
+    "allow-news-commands",
+    "allow-updater-commands",
+    "allow-game-commands",
+    "allow-player-commands",
+    "allow-mod-commands",
+    "allow-system-commands",
+    "allow-settings-commands"
+]
+
+[[set]]
+identifier = "launcher-read-only"
+description = "Grants read-only launcher permissions."
+permissions = [
+    "allow-news-commands",
+    "allow-player-commands",
+    "allow-mod-commands",
+    "allow-settings-commands"
+]
