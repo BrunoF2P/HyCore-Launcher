@@ -1,3 +1,38 @@
 fn main() {
-    tauri_build::build()
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(&[
+            "get_news",
+            "check_update_requirements",
+            "check_for_game_update",
+            "start_game_update",
+            "validate_pwr_file",
+            "launch_game",
+            "get_player_name_command",
+            "set_player_name_command",
+            "java_bin_path_command",
+            "search_mods_cf",
+            "get_installed_mods",
+            "install_mod_cf",
+            "remove_mod",
+            "toggle_mod",
+            "get_categories",
+            "get_active_profile",
+            "set_active_profile",
+            "list_profiles",
+            "create_profile",
+            "delete_profile",
+            "check_mods_updates",
+            "open_game_folder",
+            "open_url",
+            "wipe_game_data",
+            "uninstall_game",
+            "get_system_ram_gb",
+            "get_game_settings",
+            "set_game_settings",
+            "get_local_manifest_command",
+            "switch_version_command",
+            "get_available_versions_command",
+        ]),
+    ))
+    .expect("failed to run tauri-build");
 }
