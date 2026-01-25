@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-validate-pwr-file"
+description = "Enables the validate_pwr_file command without any pre-configured scope."
+commands.allow = ["validate_pwr_file"]
+
+[[permission]]
+identifier = "deny-validate-pwr-file"
+description = "Denies the validate_pwr_file command without any pre-configured scope."
+commands.deny = ["validate_pwr_file"]

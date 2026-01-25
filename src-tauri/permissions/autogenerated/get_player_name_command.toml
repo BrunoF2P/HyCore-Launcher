@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-player-name-command"
+description = "Enables the get_player_name_command command without any pre-configured scope."
+commands.allow = ["get_player_name_command"]
+
+[[permission]]
+identifier = "deny-get-player-name-command"
+description = "Denies the get_player_name_command command without any pre-configured scope."
+commands.deny = ["get_player_name_command"]

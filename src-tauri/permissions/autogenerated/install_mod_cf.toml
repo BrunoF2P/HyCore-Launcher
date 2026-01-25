@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-install-mod-cf"
+description = "Enables the install_mod_cf command without any pre-configured scope."
+commands.allow = ["install_mod_cf"]
+
+[[permission]]
+identifier = "deny-install-mod-cf"
+description = "Denies the install_mod_cf command without any pre-configured scope."
+commands.deny = ["install_mod_cf"]

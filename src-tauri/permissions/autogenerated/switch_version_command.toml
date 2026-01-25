@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-switch-version-command"
+description = "Enables the switch_version_command command without any pre-configured scope."
+commands.allow = ["switch_version_command"]
+
+[[permission]]
+identifier = "deny-switch-version-command"
+description = "Denies the switch_version_command command without any pre-configured scope."
+commands.deny = ["switch_version_command"]

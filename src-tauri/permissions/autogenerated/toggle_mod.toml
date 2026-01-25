@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-toggle-mod"
+description = "Enables the toggle_mod command without any pre-configured scope."
+commands.allow = ["toggle_mod"]
+
+[[permission]]
+identifier = "deny-toggle-mod"
+description = "Denies the toggle_mod command without any pre-configured scope."
+commands.deny = ["toggle_mod"]

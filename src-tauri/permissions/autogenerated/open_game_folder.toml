@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-game-folder"
+description = "Enables the open_game_folder command without any pre-configured scope."
+commands.allow = ["open_game_folder"]
+
+[[permission]]
+identifier = "deny-open-game-folder"
+description = "Denies the open_game_folder command without any pre-configured scope."
+commands.deny = ["open_game_folder"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-update-requirements"
+description = "Enables the check_update_requirements command without any pre-configured scope."
+commands.allow = ["check_update_requirements"]
+
+[[permission]]
+identifier = "deny-check-update-requirements"
+description = "Denies the check_update_requirements command without any pre-configured scope."
+commands.deny = ["check_update_requirements"]

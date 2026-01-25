@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-java-bin-path-command"
+description = "Enables the java_bin_path_command command without any pre-configured scope."
+commands.allow = ["java_bin_path_command"]
+
+[[permission]]
+identifier = "deny-java-bin-path-command"
+description = "Denies the java_bin_path_command command without any pre-configured scope."
+commands.deny = ["java_bin_path_command"]
