@@ -61,9 +61,10 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
+            let _tray = if let Some(icon) = app.default_window_icon() {
+                TrayIconBuilder::new()
+                    .icon(icon.clone())
+                    .menu(&menu)
                 .show_menu_on_left_click(false) // Better to toggle on click, menu on right click
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
@@ -96,6 +97,9 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            } else {
+                log::warn!("No default window icon found, skipping tray icon creation");
+            };
 
             Ok(())
         })
@@ -113,14 +117,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = app
-                .get_webview_window("main")
-                .expect("no main window")
-                .show();
-            let _ = app
-                .get_webview_window("main")
-                .expect("no main window")
-                .set_focus();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
         }))
         .invoke_handler(tauri::generate_handler![
             news::get_news,

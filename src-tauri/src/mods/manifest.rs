@@ -31,7 +31,10 @@ pub fn get_active_profile_name_path() -> PathBuf {
 
 #[tauri::command]
 pub fn get_active_profile() -> String {
-    let conn = crate::database::get_conn();
+    let conn = match crate::database::get_conn() {
+        Ok(c) => c,
+        Err(_) => return "Default".to_string(),
+    };
     let stmt = conn
         .prepare("SELECT value FROM settings WHERE key = 'active_profile'")
         .ok();
@@ -57,7 +60,7 @@ pub fn get_active_profile() -> String {
 
 pub fn set_active_profile_name(name: &str) -> Result<(), AppError> {
     log::info!("Switching active profile to: {}", name);
-    let conn = crate::database::get_conn();
+    let conn = crate::database::get_conn()?;
 
     // Ensure profile exists in profiles table
     conn.execute(
@@ -82,7 +85,7 @@ pub fn get_manifest_path() -> PathBuf {
 
 pub fn load_manifest() -> Result<ModManifest, AppError> {
     let active = get_active_profile();
-    let conn = crate::database::get_conn();
+    let conn = crate::database::get_conn()?;
 
     log::info!("Loading mods for profile {} from DB", active);
 
@@ -147,7 +150,7 @@ pub fn load_manifest() -> Result<ModManifest, AppError> {
 
 pub fn save_manifest(manifest: &ModManifest) -> Result<(), AppError> {
     let active = get_active_profile();
-    let conn = crate::database::get_conn();
+    let conn = crate::database::get_conn()?;
 
     log::info!("Saving mod manifest for profile {} to DB", active);
 

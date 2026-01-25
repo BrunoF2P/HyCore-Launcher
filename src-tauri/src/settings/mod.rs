@@ -10,7 +10,13 @@ pub fn get_settings_path() -> std::path::PathBuf {
 }
 
 pub fn load_settings() -> GameSettings {
-    let conn = crate::database::get_conn();
+    let conn = match crate::database::get_conn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to open DB for loading settings: {}. Using defaults.", e);
+            return GameSettings::default();
+        }
+    };
 
     // Try to load from the new structured table
     let settings = conn.query_row(
@@ -114,7 +120,7 @@ pub fn load_settings() -> GameSettings {
 }
 
 pub fn save_settings(settings: &GameSettings) -> anyhow::Result<()> {
-    let conn = crate::database::get_conn();
+    let conn = crate::database::get_conn().map_err(|e| anyhow::anyhow!("DB connection failed: {}", e))?;
     let mut clamped_ram = settings.ram_gb;
     {
         let total_gb = crate::system::info::get_total_ram_gb_internal().max(1);

@@ -22,7 +22,13 @@ static UPDATE_LOCK: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 use crate::platform::{get_hytale_arch, get_hytale_os};
 
 pub fn get_local_manifest() -> LocalManifest {
-    let conn = crate::database::get_conn();
+    let conn = match crate::database::get_conn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to open DB for local manifest: {}. Using default.", e);
+            return LocalManifest::default();
+        }
+    };
     let mut stmt = match conn.prepare(
         "SELECT version, channel, installed_at, last_modified, size, etag FROM installed_versions",
     ) {
@@ -247,7 +253,7 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
     let _ = fs::remove_dir_all(staging_dir);
 
     // Update local manifest in DB
-    let conn = crate::database::get_conn();
+    let conn = crate::database::get_conn().map_err(AppError::from)?;
     let version_info = if let Some(mut info) = remote_metadata {
         info.installed_at = Some(time::OffsetDateTime::now_utc().to_string());
         info

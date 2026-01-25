@@ -126,19 +126,7 @@ pub fn init_db() -> Result<()> {
     Ok(())
 }
 
-pub fn get_conn() -> rusqlite::Connection {
+pub fn get_conn() -> Result<Connection, crate::error::AppError> {
     let db_path = get_hycore_data_dir().join("hycore.db");
-    match Connection::open(&db_path) {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("Critical: Failed to open database at {:?}: {}", db_path, e);
-            // This is still a point where the app can't really function without DB,
-            // but we at least log it properly before the inevitable panic if caller doesn't handle.
-            // Ideally we'd return Result, but this function is used everywhere.
-            // For now, let's keep it returning Connection but handle the open better or refactor callers.
-            // Actually, if we want to remove 'expect', we MUST return Result or have a fallback.
-            // Since this is a local DB, if we can't open it, the app is broken.
-            panic!("Critical database error: {}", e);
-        }
-    }
+    Connection::open(&db_path).map_err(crate::error::AppError::from)
 }
