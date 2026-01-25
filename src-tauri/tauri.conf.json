@@ -1,9 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HyCore",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "identifier": "com.hycore.launcher",
   "build": {
+    "removeUnusedCommands": true,
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "bun run build",
@@ -22,17 +23,22 @@
     "windows": [
       {
         "title": "HyCore Launcher",
-        "width": 1200,
-        "height": 700,
+        "width": 1280,
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 540,
         "center": true,
-        "resizable": false
+        "resizable": true,
+        "fullscreen": false,
+        "maximized": false
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; img-src 'self' asset: https://cdn.hytale.com https://*.curseforge.com; connect-src 'self' https://hytale.com https://api.curseforge.com https://sessions.hytale.com https://game-patches.hytale.com https://github.com; style-src 'self' 'unsafe-inline'; font-src 'self';",
       "assetProtocol": {
         "enable": true,
         "scope": [
+          "$DATA/hycore/skins/*",
           "$DATA/hycore/game/Assets/**"
         ]
       }
@@ -52,9 +58,18 @@
     "category": "Game",
     "linux": {
       "deb": {
-        "depends": []
+        "depends": [
+          "libappindicator3-1"
+        ]
       }
     },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "copyright": "Copyright © 2026 BrunoF2P",
+    "homepage": "https://github.com/BrunoF2P/hycore",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
