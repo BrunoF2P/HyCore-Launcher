@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("Failed to create directory: {0}")]
     DirCreation(String),
 
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
