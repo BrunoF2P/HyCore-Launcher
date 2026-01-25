@@ -1,8 +1,9 @@
 [package]
 name = "hycore"
-version = "0.3.0"
-description = "A Tauri App"
+version = "0.4.0"
+description = "A powerful Hytale game launcher."
 authors = ["BrunoF2P"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -48,10 +49,13 @@ uuid = { version = "1", features = ["v3", "v4"] }
 base64 = "0.22"
 md5 = "0.8.0"
 
+[profile.dev]
+incremental = true # Compile your binary in smaller steps.
+
 [profile.release]
-opt-level = "z"     # Optimize for size. Use 3 for maximum speed.
+opt-level = "s"     # rioritizes small binary size. Use `3` if you prefer speed.
 lto = true          # Enable Link Time Optimization
 codegen-units = 1   # Reduce parallel code generation units for better optimization
 panic = "abort"     # Remove stack unwinding code to save space
-strip = false        # Disable stripping to allow Tauri to patch the binary for bundling/updates
+strip = false       # Disable stripping to allow Tauri to patch the binary for bundling/updates
 
