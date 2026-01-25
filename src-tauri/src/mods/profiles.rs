@@ -13,9 +13,20 @@ use tokio::sync::Mutex;
 
 static PROFILE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
+fn validate_profile_name(name: &str) -> Result<(), AppError> {
+    if name.trim().is_empty() {
+        return Err(AppError::Unknown("Profile name cannot be empty".to_string()));
+    }
+    if name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != ' ') {
+        return Err(AppError::Unknown("Profile name contains invalid characters. Only letters, numbers, spaces, -, and _ are allowed.".to_string()));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn create_profile(name: String, empty: bool) -> Result<(), AppError> {
     let _guard = PROFILE_LOCK.lock().await;
+    validate_profile_name(&name)?;
     log::info!("Creating new profile: {} (empty={})", name, empty);
     let profiles_dir = get_modpacks_dir();
     fs::create_dir_all(&profiles_dir).map_err(|e| {
@@ -125,6 +136,7 @@ pub async fn list_profiles() -> Result<Vec<Modpack>, AppError> {
 #[tauri::command]
 pub async fn set_active_profile(window: Window, name: String) -> Result<(), AppError> {
     let _guard = PROFILE_LOCK.lock().await;
+    validate_profile_name(&name)?;
     log::info!("Setting active profile to: {}", name);
     let pack_path = get_modpacks_dir().join(format!("{}.json", name));
     if !pack_path.exists() {
@@ -216,6 +228,7 @@ pub async fn sync_profile(window: Window, name: String) -> Result<(), AppError> 
 #[tauri::command]
 pub async fn delete_profile(name: String) -> Result<(), AppError> {
     let _guard = PROFILE_LOCK.lock().await;
+    validate_profile_name(&name)?;
     log::info!("Deleting profile: {}", name);
     if name == "Default" {
         log::error!("Attempted to delete protected 'Default' profile");
