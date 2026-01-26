@@ -8,9 +8,10 @@ interface FeaturedNewsProps {
 
 export const FeaturedNews = ({ item }: FeaturedNewsProps) => {
     return (
-        <div
-            className="bg-black/45 backdrop-blur-md border border-white/10 rounded-lg overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:border-hyamber group shrink-0"
+        <button
+            className="bg-black/45 backdrop-blur-md border border-white/10 rounded-lg overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:border-hyamber group shrink-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hyamber/50 focus-visible:border-hyamber/50"
             onClick={() => openUrl(item.link)}
+            aria-label={item.title}
         >
             <div className="w-full h-40 overflow-hidden rounded-t-lg">
                 <img
@@ -28,6 +29,6 @@ export const FeaturedNews = ({ item }: FeaturedNewsProps) => {
                     <ExternalLink className="w-4 h-4" />
                 </div>
             </div>
-        </div>
+        </button>
     );
 };

@@ -5,7 +5,8 @@ import { useTranslation } from 'react-i18next';
 
 export const UpdateOverlay: React.FC = () => {
     const { t } = useTranslation();
-    const { status, isUpdating } = useUpdateStore();
+    const status = useUpdateStore(state => state.status);
+    const isUpdating = useUpdateStore(state => state.isUpdating);
 
     const isShowing = isUpdating || status.stage === 'error';
     if (!isShowing || status.stage === 'idle' || status.stage === 'download' || status.stage === 'butler') return null;

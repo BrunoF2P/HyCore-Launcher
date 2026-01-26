@@ -9,10 +9,11 @@ export const NewsList = ({ items }: NewsListProps) => {
     return (
         <div className="bg-black/45 backdrop-blur-md border border-white/10 rounded-lg p-2.5">
             {items.map((item, idx) => (
-                <div
+                <button
                     key={idx}
-                    className="flex justify-between items-center px-5 py-2.5 cursor-pointer transition-colors border-b border-white/5 last:border-none hover:bg-white/5 group"
+                    className="w-full flex justify-between items-center px-5 py-2.5 cursor-pointer transition-colors border-b border-white/5 last:border-none hover:bg-white/5 group text-left focus-visible:outline-none focus-visible:bg-white/10 focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-hyamber/30"
                     onClick={() => openUrl(item.link)}
+                    aria-label={item.title}
                 >
                     <span className="text-sm font-medium tracking-tight truncate max-w-[17.5rem] group-hover:text-hyamber transition-colors">
                         {item.title}
@@ -20,7 +21,7 @@ export const NewsList = ({ items }: NewsListProps) => {
                     <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
                         {item.date}
                     </span>
-                </div>
+                </button>
             ))}
         </div>
     );

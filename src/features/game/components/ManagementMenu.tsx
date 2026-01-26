@@ -12,13 +12,14 @@ interface ManagementMenuProps {
 
 export const ManagementMenu = ({ onOpenMods, onOpenSettings }: ManagementMenuProps) => {
     const { t } = useTranslation();
-    const { settings } = useSettingsStore();
-    const { installedVersions, activeVersion } = useGameStore();
+    const settings = useSettingsStore(state => state.settings);
+    const installedVersions = useGameStore(state => state.installedVersions);
+    const activeVersion = useGameStore(state => state.activeVersion);
 
     const activeInfo = installedVersions.find(v => v.version === activeVersion);
     const isPreRelease = activeInfo?.channel === 'pre-release' || settings.channel === 'pre-release';
 
-    const btnClass = "w-16 h-16 bg-black/45 backdrop-blur-md border border-white/10 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:-translate-y-0.5 group shrink-0 relative";
+    const btnClass = "w-16 h-16 bg-black/45 backdrop-blur-md border border-white/10 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 group shrink-0 relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hyamber/50 focus-visible:border-hyamber/50";
     const iconClass = "w-6 h-6 mb-1 opacity-90 transition-transform group-hover:scale-110";
     const labelClass = "text-[9px] uppercase font-bold tracking-tight opacity-70 group-hover:opacity-100";
 
@@ -65,30 +66,55 @@ export const ManagementMenu = ({ onOpenMods, onOpenSettings }: ManagementMenuPro
     };
 
     return (
-        <aside className="w-fit flex flex-col gap-4 mt-0">
-            <button className={btnClass} title={t('tooltips.settings')} onClick={onOpenSettings}>
-                <Settings className={iconClass} />
+        <aside className="w-fit flex flex-col gap-4 mt-0" role="navigation" aria-label={t('management.menu_label') || "Management Menu"}>
+            <button
+                className={btnClass}
+                title={t('tooltips.settings')}
+                onClick={onOpenSettings}
+                aria-label={t('management.settings')}
+            >
+                <Settings className={iconClass} aria-hidden="true" />
                 <span className={labelClass}>{t('management.settings')}</span>
             </button>
-            <button className={btnClass} title={t('tooltips.control_mods')} onClick={onOpenMods}>
+            <button
+                className={btnClass}
+                title={t('tooltips.control_mods')}
+                onClick={onOpenMods}
+                aria-label={t('management.mods')}
+            >
                 {isPreRelease && (
-                    <div className="absolute -top-1 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full border border-black shadow-lg animate-pulse z-10">
+                    <div className="absolute -top-1 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full border border-black shadow-lg z-10" aria-label={t('management.dev_badge')}>
                         {t('management.dev_badge')}
                     </div>
                 )}
-                <Puzzle className={`${iconClass} text-hyamber`} />
+                <Puzzle className={`${iconClass} text-hyamber`} aria-hidden="true" />
                 <span className={labelClass}>{t('management.mods')}</span>
             </button>
-            <button className={btnClass} title={t('tooltips.open_folder')} onClick={handleOpenFolder}>
-                <FolderOpen className={iconClass} />
+            <button
+                className={btnClass}
+                title={t('tooltips.open_folder')}
+                onClick={handleOpenFolder}
+                aria-label={t('management.folder')}
+            >
+                <FolderOpen className={iconClass} aria-hidden="true" />
                 <span className={labelClass}>{t('management.folder')}</span>
             </button>
-            <button className={btnClass} title={t('tooltips.clear_data')} onClick={handleClearData}>
-                <Trash2 className={iconClass} />
+            <button
+                className={btnClass}
+                title={t('tooltips.clear_data')}
+                onClick={handleClearData}
+                aria-label={t('management.clear')}
+            >
+                <Trash2 className={iconClass} aria-hidden="true" />
                 <span className={labelClass}>{t('management.clear')}</span>
             </button>
-            <button className={`${btnClass} hover:bg-red-500/20 hover:border-red-500/40`} title={t('tooltips.uninstall')} onClick={handleUninstall}>
-                <ShieldX className={`${iconClass} text-red-400`} />
+            <button
+                className={`${btnClass} hover:bg-red-500/20 hover:border-red-500/40`}
+                title={t('tooltips.uninstall')}
+                onClick={handleUninstall}
+                aria-label={t('management.remove')}
+            >
+                <ShieldX className={`${iconClass} text-red-400`} aria-hidden="true" />
                 <span className={labelClass}>{t('management.remove')}</span>
             </button>
         </aside >
