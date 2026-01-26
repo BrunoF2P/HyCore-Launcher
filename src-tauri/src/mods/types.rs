@@ -102,35 +102,26 @@ pub struct SearchResult {
 
 // Installed Mod Structures
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Mod {
     pub id: String, // "cf-12345"
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
     pub version: String,
     pub author: String,
     pub description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub download_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub curse_forge_id: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub file_id: Option<i32>,
     pub enabled: bool,
     pub installed_at: String,
     pub updated_at: String,
     pub file_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub downloads: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_file_id: Option<i32>,
 }
 

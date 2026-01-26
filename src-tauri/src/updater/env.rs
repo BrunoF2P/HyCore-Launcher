@@ -46,12 +46,16 @@ pub fn get_client_dir(pool: &DbPool) -> PathBuf {
 
 pub fn get_user_data_dir(pool: &DbPool) -> PathBuf {
     let active = crate::mods::manifest::get_active_profile(pool);
-    if active == "Default" {
+    get_user_data_dir_for_profile(&active)
+}
+
+pub fn get_user_data_dir_for_profile(profile_name: &str) -> PathBuf {
+    if profile_name == "Default" {
         get_hycore_data_dir().join("UserData")
     } else {
         get_hycore_data_dir()
             .join("instances")
-            .join(active)
+            .join(profile_name)
             .join("UserData")
     }
 }

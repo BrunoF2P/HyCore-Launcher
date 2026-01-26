@@ -167,13 +167,26 @@ pub async fn set_active_profile(
     }
 
     // 1. Disable all currently active mods from the current profile
-    // This ensures no mod files are left enabled when switching context
-    log::info!("Disabling mods from current profile before switch...");
-    let current_manifest = load_manifest(&db_pool)?;
-    for m in current_manifest.mods {
-        if m.enabled {
-            let _ = toggle_mod(&db_pool, m.id.clone(), false);
+    // ONLY if the new profile uses the SAME UserData directory.
+    // If they use different directories, we don't need to rename files to .disabled
+    let old_profile = get_active_profile(&db_pool);
+    let old_data_dir = crate::updater::env::get_user_data_dir_for_profile(&old_profile);
+    let new_data_dir = crate::updater::env::get_user_data_dir_for_profile(&name);
+
+    if old_data_dir == new_data_dir {
+        log::info!("Profiles share folder, disabling mods from current profile before switch...");
+        let current_manifest = load_manifest(&db_pool)?;
+        for m in current_manifest.mods {
+            if m.enabled {
+                let _ = toggle_mod(&db_pool, m.id.clone(), false);
+            }
         }
+    } else {
+        log::info!(
+            "Profiles use different folders ({:?} vs {:?}), skipping disable step",
+            old_data_dir,
+            new_data_dir
+        );
     }
 
     // 2. Update active profile state
@@ -206,12 +219,22 @@ pub async fn sync_profile(pool: &DbPool, window: Window, name: String) -> Result
     );
     for pack_mod in target_manifest.mods {
         let p = Path::new(&pack_mod.file_path);
-        let mut disabled_path = p.to_path_buf();
+
+        // Robust check: common mod files might have been renamed to .disabled by another profile
+        let base_path = if pack_mod.file_path.ends_with(".disabled") {
+            p.parent()
+                .unwrap_or(Path::new(""))
+                .join(p.file_stem().unwrap_or_default())
+        } else {
+            p.to_path_buf()
+        };
+
+        let mut disabled_path = base_path.clone();
         let mut file_name = disabled_path.file_name().unwrap_or_default().to_os_string();
         file_name.push(".disabled");
         disabled_path.set_file_name(file_name);
 
-        let exists = p.exists() || disabled_path.exists();
+        let exists = base_path.exists() || disabled_path.exists();
 
         // If mod is missing, trigger an installation from CurseForge
         if !exists {

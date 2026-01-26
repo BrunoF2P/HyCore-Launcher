@@ -13,6 +13,7 @@ pub use types::{LocalManifest, LocalVersionInfo, SystemRequirements, UpdateStatu
 use crate::database::DbPool;
 use crate::error::AppError;
 use once_cell::sync::Lazy;
+use redb::ReadableTable;
 use std::fs;
 use std::process::Command;
 use std::sync::Mutex;
@@ -22,89 +23,106 @@ static UPDATE_LOCK: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
 use crate::platform::{get_hytale_arch, get_hytale_os};
 
+const INSTALLED_VERSIONS_TABLE: redb::TableDefinition<'static, u32, &[u8]> =
+    redb::TableDefinition::new("installed_versions");
+
 pub fn get_local_manifest(pool: &DbPool) -> LocalManifest {
     let mut installed = Vec::new();
 
-    // Scope to ensure the database connection is dropped before calling load_settings
-    {
-        let conn = match crate::database::get_conn(pool) {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!(
-                    "Failed to open DB for local manifest: {}. Using default.",
-                    e
-                );
-                return LocalManifest::default();
-            }
-        };
-        let mut stmt = match conn.prepare(
-            "SELECT version, channel, installed_at, last_modified, size, etag FROM installed_versions",
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to prepare statement: {}", e);
-                return LocalManifest::default();
-            }
-        };
-
-        let version_iter = match stmt.query_map([], |row| {
-            Ok(LocalVersionInfo {
-                version: row.get(0)?,
-                channel: row.get(1)?,
-                installed_at: row.get(2)?,
-                last_modified: row.get(3)?,
-                size: row.get(4)?,
-                etag: row.get(5)?,
-            })
-        }) {
-            Ok(iter) => iter,
-            Err(e) => {
-                log::error!("Failed to query installed versions: {}", e);
-                return LocalManifest::default();
-            }
-        };
-
-        for v in version_iter {
-            if let Ok(info) = v {
-                // Validate existence of folder
-                let dir = env::get_version_dir(info.version);
-                if dir.exists() {
-                    installed.push(info);
-                } else {
-                    // Cleanup missing from DB
-                    let _ = conn.execute(
-                        "DELETE FROM installed_versions WHERE version = ?",
-                        [info.version],
-                    );
-                }
-            }
+    let read_txn = match pool.begin_read() {
+        Ok(txn) => txn,
+        Err(e) => {
+            log::error!("Failed to begin read transaction: {}. Using default.", e);
+            return LocalManifest::default();
         }
+    };
 
-        // Migration
-        if installed.is_empty() {
-            let json_path = env::get_versions_manifest_path();
-            if json_path.exists() {
-                if let Ok(content) = fs::read_to_string(&json_path) {
-                    if let Ok(manifest) = serde_json::from_str::<LocalManifest>(&content) {
-                        for v in &manifest.installed {
-                            let _ = conn.execute(
-                                "INSERT OR IGNORE INTO installed_versions (version, channel, installed_at, last_modified, size, etag) 
-                                 VALUES (?, ?, ?, ?, ?, ?)",
-                                rusqlite::params![v.version, v.channel, v.installed_at, v.last_modified, v.size.map(|s| s as i64), v.etag],
-                            );
-                        }
-                        installed = manifest.installed;
+    let table = match read_txn.open_table(INSTALLED_VERSIONS_TABLE) {
+        Ok(t) => t,
+        Err(e) => {
+            log::error!(
+                "Failed to open installed_versions table: {}. Using default.",
+                e
+            );
+            return LocalManifest::default();
+        }
+    };
+
+    // Iterate over all installed versions
+    let iter = match table.iter() {
+        Ok(i) => i,
+        Err(e) => {
+            log::error!("Failed to iterate installed versions: {}", e);
+            return LocalManifest::default();
+        }
+    };
+
+    for item in iter {
+        if let Ok((version_key, data)) = item {
+            let version: u32 = version_key.value();
+
+            match bincode::deserialize::<LocalVersionInfo>(data.value()) {
+                Ok(info) => {
+                    // Validate existence of folder
+                    let dir = env::get_version_dir(info.version);
+                    if dir.exists() {
+                        installed.push(info);
+                    } else {
+                        // Note: We can't delete from the table during iteration
+                        // This cleanup will happen on next save
+                        log::warn!(
+                            "Version {} directory not found, will be cleaned up",
+                            version
+                        );
                     }
                 }
+                Err(e) => {
+                    log::error!("Failed to deserialize version {}: {}", version, e);
+                }
             }
         }
-    } // Connection is dropped here
+    }
+
+    // Migration from old JSON manifest
+    if installed.is_empty() {
+        let json_path = env::get_versions_manifest_path();
+        if json_path.exists() {
+            if let Ok(content) = fs::read_to_string(&json_path) {
+                if let Ok(manifest) = serde_json::from_str::<LocalManifest>(&content) {
+                    log::info!(
+                        "Migrating {} versions from JSON manifest",
+                        manifest.installed.len()
+                    );
+                    for v in &manifest.installed {
+                        let _ = save_installed_version(pool, v);
+                    }
+                    installed = manifest.installed;
+                }
+            }
+        }
+    }
 
     let settings = crate::settings::load_settings(pool);
     LocalManifest {
         installed,
         active_version: settings.active_version,
     }
+}
+
+fn save_installed_version(
+    pool: &DbPool,
+    version_info: &LocalVersionInfo,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let data = bincode::serialize(version_info)?;
+
+    let write_txn = pool.begin_write()?;
+    {
+        let mut table = write_txn.open_table(INSTALLED_VERSIONS_TABLE)?;
+        table.insert(version_info.version, data.as_slice())?;
+    }
+    write_txn.commit()?;
+
+    Ok(())
 }
 
 pub async fn is_update_available(pool: &DbPool) -> Result<(bool, u32), AppError> {
@@ -263,7 +281,6 @@ pub async fn run_update(pool: &DbPool, window: Window) -> Result<(), AppError> {
     let _ = fs::remove_dir_all(staging_dir);
 
     // Update local manifest in DB
-    let conn = crate::database::get_conn(pool).map_err(AppError::from)?;
     let version_info = if let Some(mut info) = remote_metadata {
         info.installed_at = Some(time::OffsetDateTime::now_utc().to_string());
         info
@@ -276,18 +293,7 @@ pub async fn run_update(pool: &DbPool, window: Window) -> Result<(), AppError> {
         }
     };
 
-    let _ = conn.execute(
-        "INSERT OR REPLACE INTO installed_versions (version, channel, installed_at, last_modified, size, etag) 
-         VALUES (?, ?, ?, ?, ?, ?)",
-        rusqlite::params![
-            version_info.version,
-            version_info.channel,
-            version_info.installed_at,
-            version_info.last_modified,
-            version_info.size.map(|s| s as i64),
-            version_info.etag
-        ],
-    );
+    let _ = save_installed_version(pool, &version_info);
 
     // Update active version in settings
     let mut settings = crate::settings::load_settings(pool);
@@ -353,7 +359,7 @@ pub async fn start_game_update(
     }
 
     // Access inner pool to keep it alive or clone if needed, but we can just pass reference to async fn
-    // However, for async, we should clone the Arc<Mutex<Connection>> (DbPool is Arc)
+    // However, for async, we should clone the Arc<Database> (DbPool is Arc)
     let pool = db_pool.inner().clone();
 
     log::info!("Starting game update process...");

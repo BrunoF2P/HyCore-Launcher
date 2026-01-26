@@ -30,7 +30,13 @@ pub enum AppError {
     DirCreation(String),
 
     #[error("Database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    DatabaseError(String),
+
+    #[error("Database transaction error: {0}")]
+    DatabaseTransaction(String),
+
+    #[error("Database storage error: {0}")]
+    DatabaseStorage(String),
 
     #[error("Invalid path: {0}")]
     InvalidPath(String),

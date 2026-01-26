@@ -1,9 +1,12 @@
 use super::types::ModManifest;
-use crate::database::{get_conn, DbPool};
+use crate::database::DbPool;
 use crate::error::AppError;
 use crate::updater::env::get_user_data_dir;
+use redb::ReadableTable;
 use std::fs;
 use std::path::PathBuf;
+
+use crate::database::{MODS_TABLE, PROFILES_TABLE, SETTINGS_TABLE};
 
 pub fn get_mods_dir(pool: &DbPool) -> PathBuf {
     get_user_data_dir(pool).join("Mods")
@@ -36,21 +39,23 @@ pub fn get_active_profile_command(db_pool: tauri::State<DbPool>) -> String {
 }
 
 pub fn get_active_profile(pool: &DbPool) -> String {
-    let conn = match get_conn(pool) {
-        Ok(c) => c,
+    let read_txn = match pool.begin_read() {
+        Ok(txn) => txn,
         Err(_) => return "Default".to_string(),
     };
-    let stmt = conn
-        .prepare("SELECT value FROM settings WHERE key = 'active_profile'")
-        .ok();
 
-    if let Some(mut stmt) = stmt {
-        if let Ok(value) = stmt.query_row([], |row| row.get::<_, String>(0)) {
-            return value;
+    let table = match read_txn.open_table(SETTINGS_TABLE) {
+        Ok(t) => t,
+        Err(_) => return "Default".to_string(),
+    };
+
+    if let Ok(Some(value)) = table.get("active_profile") {
+        if let Ok(name) = std::str::from_utf8(value.value()) {
+            return name.to_string();
         }
     }
 
-    // Migration
+    // Migration from old file-based storage
     let path = get_active_profile_name_path();
     if path.exists() {
         if let Ok(s) = fs::read_to_string(&path) {
@@ -65,20 +70,48 @@ pub fn get_active_profile(pool: &DbPool) -> String {
 
 pub fn set_active_profile_name(pool: &DbPool, name: &str) -> Result<(), AppError> {
     log::info!("Switching active profile to: {}", name);
-    let conn = get_conn(pool)?;
 
-    // Ensure profile exists in profiles table
-    conn.execute(
-        "INSERT OR IGNORE INTO profiles (name, created_at) VALUES (?, ?)",
-        [name, &time::OffsetDateTime::now_utc().to_string()],
-    )
-    .map_err(|e| AppError::Unknown(e.to_string()))?;
+    let write_txn = pool
+        .begin_write()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('active_profile', ?)",
-        [name],
-    )
-    .map_err(|e| AppError::Unknown(e.to_string()))?;
+    {
+        // Ensure profile exists in profiles table
+        let mut profiles_table = write_txn
+            .open_table(PROFILES_TABLE)
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Profile {
+            name: String,
+            created_at: String,
+        }
+
+        let profile = Profile {
+            name: name.to_string(),
+            created_at: time::OffsetDateTime::now_utc().to_string(),
+        };
+
+        let data =
+            bincode::serialize(&profile).map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        profiles_table
+            .insert(name, data.as_slice())
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        // Set active profile in settings
+        let mut settings_table = write_txn
+            .open_table(SETTINGS_TABLE)
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        settings_table
+            .insert("active_profile", name.as_bytes())
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    }
+
+    write_txn
+        .commit()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
     Ok(())
 }
@@ -90,50 +123,38 @@ pub fn get_manifest_path(pool: &DbPool) -> PathBuf {
 
 pub fn load_manifest(pool: &DbPool) -> Result<ModManifest, AppError> {
     let active = get_active_profile(pool);
-    let conn = get_conn(pool)?;
+
+    let read_txn = pool
+        .begin_read()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    let table = read_txn
+        .open_table(MODS_TABLE)
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
     log::info!("Loading mods for profile {} from DB", active);
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, name, slug, version, author, description, download_url, curse_forge_id, 
-                file_id, enabled, installed_at, updated_at, file_path, icon_url, downloads, 
-                category, latest_version, latest_file_id 
-         FROM mods WHERE profile_name = ?",
-        )
-        .map_err(|e| AppError::Unknown(e.to_string()))?;
-
-    let mod_iter = stmt
-        .query_map([&active], |row| {
-            Ok(super::types::Mod {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                slug: row.get(2)?,
-                version: row.get(3)?,
-                author: row.get(4)?,
-                description: row.get(5)?,
-                download_url: row.get(6)?,
-                curse_forge_id: row.get(7)?,
-                file_id: row.get(8)?,
-                enabled: row.get::<_, i32>(9)? != 0,
-                installed_at: row.get(10)?,
-                updated_at: row.get(11)?,
-                file_path: row.get(12)?,
-                icon_url: row.get(13)?,
-                downloads: row.get(14)?,
-                category: row.get(15)?,
-                latest_version: row.get(16)?,
-                latest_file_id: row.get(17)?,
-            })
-        })
-        .map_err(|e| AppError::Unknown(e.to_string()))?;
-
     let mut mods = Vec::new();
-    for m in mod_iter {
-        mods.push(m.map_err(|e| AppError::Unknown(e.to_string()))?);
+    let prefix = format!("{}::", active);
+
+    // Iterate through all entries and filter by profile prefix
+    let iter = table
+        .iter()
+        .map_err(|e: redb::StorageError| AppError::DatabaseError(e.to_string()))?;
+
+    for item in iter {
+        if let Ok((key, data)) = item {
+            let key_str: &str = key.value();
+            if key_str.starts_with(&prefix) {
+                match bincode::deserialize::<super::types::Mod>(data.value()) {
+                    Ok(mod_data) => mods.push(mod_data),
+                    Err(e) => log::error!("Failed to deserialize mod {}: {}", key_str, e),
+                }
+            }
+        }
     }
 
-    // Migration logic
+    // Migration logic from JSON
     if mods.is_empty() {
         let json_path = get_manifest_path(pool);
         if json_path.exists() {
@@ -155,46 +176,57 @@ pub fn load_manifest(pool: &DbPool) -> Result<ModManifest, AppError> {
 
 pub fn save_manifest(pool: &DbPool, manifest: &ModManifest) -> Result<(), AppError> {
     let active = get_active_profile(pool);
-    let conn = get_conn(pool)?;
 
     log::info!("Saving mod manifest for profile {} to DB", active);
 
-    // Simple approach: delete and re-insert for the current profile
-    // In a more complex app we'd diff, but for a launcher this is safe and easy.
-    conn.execute("DELETE FROM mods WHERE profile_name = ?", [&active])
-        .map_err(|e| AppError::Unknown(e.to_string()))?;
+    let write_txn = pool
+        .begin_write()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    for m in &manifest.mods {
-        conn.execute(
-            "INSERT INTO mods (id, profile_name, name, slug, version, author, description, 
-                              download_url, curse_forge_id, file_id, enabled, installed_at, 
-                              updated_at, file_path, icon_url, downloads, category, 
-                              latest_version, latest_file_id) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            rusqlite::params![
-                m.id,
-                active,
-                m.name,
-                m.slug,
-                m.version,
-                m.author,
-                m.description,
-                m.download_url,
-                m.curse_forge_id,
-                m.file_id,
-                if m.enabled { 1 } else { 0 },
-                m.installed_at,
-                m.updated_at,
-                m.file_path,
-                m.icon_url,
-                m.downloads,
-                m.category,
-                m.latest_version,
-                m.latest_file_id
-            ],
-        )
-        .map_err(|e| AppError::Unknown(e.to_string()))?;
+    {
+        let mut table = write_txn
+            .open_table(MODS_TABLE)
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        // Delete all mods for this profile
+        let prefix = format!("{}::", active);
+        let mut keys_to_delete = Vec::new();
+
+        // Collect keys to delete
+        let iter = table
+            .iter()
+            .map_err(|e: redb::StorageError| AppError::DatabaseError(e.to_string()))?;
+
+        for item in iter {
+            if let Ok((key, _)) = item {
+                let key_str: &str = key.value();
+                if key_str.starts_with(&prefix) {
+                    keys_to_delete.push(key_str.to_string());
+                }
+            }
+        }
+
+        // Delete collected keys
+        for key in keys_to_delete {
+            table
+                .remove(key.as_str())
+                .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        }
+
+        // Insert all mods for this profile
+        for m in &manifest.mods {
+            let key = format!("{}::{}", active, m.id);
+            let data = bincode::serialize(m).map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+            table
+                .insert(key.as_str(), data.as_slice())
+                .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        }
     }
+
+    write_txn
+        .commit()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
     Ok(())
 }
