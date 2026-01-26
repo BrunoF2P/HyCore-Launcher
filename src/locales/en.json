@@ -41,6 +41,7 @@
         "language_auto": "Automatic",
         "language_en": "English",
         "language_pt": "Portuguese",
+        "language_es": "Spanish",
         "advanced_on": "Advanced Mode: On",
         "advanced_off": "Advanced Mode: Off",
         "advanced_hint": "Enable Advanced Mode to adjust RAM allocation and JVM arguments.",

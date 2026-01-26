@@ -41,6 +41,7 @@
         "language_auto": "Automático",
         "language_en": "Inglês",
         "language_pt": "Português",
+        "language_es": "Espanhol",
         "advanced_on": "Modo Avançado: Ligado",
         "advanced_off": "Modo Avançado: Desligado",
         "advanced_hint": "Habilite o Modo Avançado para ajustar a alocação de RAM e argumentos da JVM.",
