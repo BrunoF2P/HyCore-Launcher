@@ -57,7 +57,7 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-white/5 rounded-full transition-colors group"
+                        className="p-2 hover:bg-white/5 rounded-full transition-colors cursor-pointer group"
                     >
                         <X className="w-6 h-6 text-white/40 group-hover:text-white" />
                     </button>
@@ -163,7 +163,7 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                         </div>
 
                         <div className="space-y-4">
-                            <label className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer group">
+                            <label className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl transition-colors group">
                                 <div className="space-y-0.5">
                                     <span className="font-semibold text-white/90">{t('settings.discord_rpc')}</span>
                                     <p className="text-xs text-white/40">{t('settings.discord_rpc_desc')}</p>
@@ -172,11 +172,11 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                     type="checkbox"
                                     checked={localSettings.discord_rpc_enabled}
                                     onChange={(e) => setLocalSettings({ ...localSettings, discord_rpc_enabled: e.target.checked })}
-                                    className="w-5 h-5 accent-sky-400 rounded border-white/10"
+                                    className="w-5 h-5 accent-sky-400 rounded border-white/10 cursor-pointer hover:brightness-125 transition-all"
                                 />
                             </label>
 
-                            <label className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer group">
+                            <label className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl transition-colors group">
                                 <div className="space-y-0.5">
                                     <span className="font-semibold text-white/90">{t('settings.minimize_to_tray')}</span>
                                     <p className="text-xs text-white/40">{t('settings.minimize_to_tray_desc')}</p>
@@ -185,11 +185,11 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                     type="checkbox"
                                     checked={localSettings.minimize_to_tray}
                                     onChange={(e) => setLocalSettings({ ...localSettings, minimize_to_tray: e.target.checked })}
-                                    className="w-5 h-5 accent-sky-400 rounded border-white/10"
+                                    className="w-5 h-5 accent-sky-400 rounded border-white/10 cursor-pointer hover:brightness-125 transition-all"
                                 />
                             </label>
 
-                            <label className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer group">
+                            <label className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl transition-colors group">
                                 <div className="space-y-0.5">
                                     <span className="font-semibold text-white/90">{t('settings.close_on_launch')}</span>
                                     <p className="text-xs text-white/40">{t('settings.close_on_launch_desc')}</p>
@@ -198,7 +198,7 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                     type="checkbox"
                                     checked={localSettings.close_on_launch}
                                     onChange={(e) => setLocalSettings({ ...localSettings, close_on_launch: e.target.checked })}
-                                    className="w-5 h-5 accent-sky-400 rounded border-white/10"
+                                    className="w-5 h-5 accent-sky-400 rounded border-white/10 cursor-pointer hover:brightness-125 transition-all"
                                 />
                             </label>
 
@@ -210,18 +210,18 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
                                         onClick={() => setLocalSettings({ ...localSettings, channel: 'release' })}
-                                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${localSettings.channel === 'release'
+                                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all cursor-pointer ${localSettings.channel === 'release'
                                             ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
-                                            : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'
+                                            : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:border-white/20'
                                             }`}
                                     >
                                         {t('settings.release')}
                                     </button>
                                     <button
                                         onClick={() => setLocalSettings({ ...localSettings, channel: 'pre-release' })}
-                                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${localSettings.channel === 'pre-release'
+                                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all cursor-pointer ${localSettings.channel === 'pre-release'
                                             ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                                            : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'
+                                            : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:border-white/20'
                                             }`}
                                     >
                                         {t('settings.prerelease')}
@@ -247,6 +247,7 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                             <option value="auto" className="bg-[#1a1f2e]">{t('settings.language_auto')}</option>
                                             <option value="en" className="bg-[#1a1f2e]">{t('settings.language_en')}</option>
                                             <option value="pt" className="bg-[#1a1f2e]">{t('settings.language_pt')}</option>
+                                            <option value="es" className="bg-[#1a1f2e]">{t('settings.language_es')}</option>
                                         </select>
                                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none" />
                                     </div>
@@ -262,14 +263,14 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                 <div className="px-8 py-6 border-t border-white/5 bg-white/[0.02] flex justify-end gap-3">
                     <button
                         onClick={onClose}
-                        className="px-6 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors"
+                        className="px-6 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors cursor-pointer"
                     >
                         {t('common.cancel')}
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={loading}
-                        className="px-8 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 rounded-lg text-white font-bold text-sm hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                        className="px-8 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 rounded-lg text-white font-bold text-sm hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                     >
                         <Save className="w-4 h-4" />
                         {t('settings.save_changes')}

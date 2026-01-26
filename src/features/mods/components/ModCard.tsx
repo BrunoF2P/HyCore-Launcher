@@ -110,9 +110,9 @@ const ModCard = memo(function ModCard({ mod, isInstalled, onInstall, onRemove, o
                     </>
                 ) : (
                     <button
-                        onClick={() => isCF(mod) && onInstall?.(mod)}
+                        onClick={(e) => { e.stopPropagation(); isCF(mod) && onInstall?.(mod); }}
                         disabled={isLoading || isInstalled} // Could happen if ID check matches
-                        className={`w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isInstalled
+                        className={`w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${isInstalled
                             ? 'bg-white/5 text-white/30 cursor-not-allowed'
                             : 'bg-gradient-to-r from-sky-500 to-blue-500 text-white hover:brightness-110'
                             }`}

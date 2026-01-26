@@ -74,7 +74,7 @@ export const VersionSelector = () => {
         <div className="relative" ref={menuRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`min-w-fit px-3 h-16 bg-white/5 border border-white/10 rounded flex items-center gap-2 hover:bg-white/10 transition-all group ${isOpen ? 'bg-white/15 border-white/30' : ''}`}
+                className={`min-w-fit px-3 h-16 bg-white/5 border border-white/10 rounded flex items-center gap-2 hover:bg-white/10 transition-all cursor-pointer group ${isOpen ? 'bg-white/15 border-white/30' : ''}`}
                 title={t('management.versions')}
             >
                 <Layers className={`w-5 h-5 transition-colors ${isOpen ? 'text-hyamber' : 'text-white/40 group-hover:text-white'}`} />
@@ -102,7 +102,7 @@ export const VersionSelector = () => {
                                 <button
                                     key={`${v.channel}-${v.version}`}
                                     onClick={() => handleSwitch(v)}
-                                    className={`w-full px-3 py-2.5 rounded-lg text-left text-sm flex items-center justify-between transition-all group ${v.version === activeVersion
+                                    className={`w-full px-3 py-2.5 rounded-lg text-left text-sm flex items-center justify-between transition-all cursor-pointer group ${v.version === activeVersion
                                         ? 'bg-hyamber/10 text-hyamber'
                                         : 'hover:bg-white/5 text-white/60 hover:text-white'
                                         }`}

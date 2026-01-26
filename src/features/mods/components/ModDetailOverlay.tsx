@@ -26,11 +26,11 @@ export const ModDetailOverlay = ({ mod, onClose }: ModDetailOverlayProps) => {
             {/* Content Container */}
             <div className="relative w-full max-w-6xl h-full max-h-[850px] bg-[#141822] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                 {/* Header Section */}
-                <div className="relative h-[300px] shrink-0 overflow-hidden">
-                    <div className="absolute inset-0 blur-3xl opacity-30 scale-125">
+                <div className="relative h-[450px] shrink-0 overflow-hidden">
+                    <div className="absolute inset-0 opacity-80 scale-105">
                         <img src={activeScreenshot} alt="" className="w-full h-full object-cover" />
                     </div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#141822] via-[#141822]/40 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#141822] via-[#141822]/20 to-transparent" />
 
                     <button
                         onClick={onClose}
