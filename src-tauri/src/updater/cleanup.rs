@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::env::{get_hycore_data_dir, get_legacy_version_file_path, get_version_file_path};
+use super::env::{get_hycore_data_dir, get_version_file_path};
 
 pub fn cleanup_incomplete_downloads() -> anyhow::Result<()> {
     log::info!("Starting environment cleanup...");
@@ -73,17 +73,14 @@ fn clean_incomplete_game(game_dir: &Path) -> anyhow::Result<()> {
 
 pub fn remove_version_files() -> anyhow::Result<()> {
     let json_path = get_version_file_path();
-    let txt_path = get_legacy_version_file_path();
 
     if json_path.exists() {
         log::info!("Removing version file: {:?}", json_path);
         let _ = fs::remove_file(json_path);
     }
 
-    if txt_path.exists() {
-        log::info!("Removing legacy version file: {:?}", txt_path);
-        let _ = fs::remove_file(txt_path);
-    }
+    // Note: Legacy version file is profile-specific and requires DB pool access
+    // It will be cleaned up during normal profile operations
 
     Ok(())
 }

@@ -1,11 +1,12 @@
 use super::types::LocalVersionInfo;
 use crate::http::HTTP_CLIENT;
 use crate::platform::{get_hytale_arch, get_hytale_os};
+use crate::settings::GameSettings;
 use futures_util::StreamExt;
 
-pub async fn find_latest_version(channel: &str) -> anyhow::Result<u32> {
-    let os = get_hytale_os();
-    let arch = get_hytale_arch();
+pub async fn find_latest_version(settings: &GameSettings, channel: &str) -> anyhow::Result<u32> {
+    let os = get_hytale_os(settings);
+    let arch = get_hytale_arch(settings);
     let mut max_found = 0;
     let mut consecutive_failures = 0;
     const MAX_CONSECUTIVE_FAILURES: u32 = 10;
@@ -88,9 +89,9 @@ pub async fn find_latest_version(channel: &str) -> anyhow::Result<u32> {
     Ok(max_found)
 }
 
-pub async fn find_all_versions(channel: &str) -> anyhow::Result<Vec<u32>> {
-    let os = get_hytale_os();
-    let arch = get_hytale_arch();
+pub async fn find_all_versions(settings: &GameSettings, channel: &str) -> anyhow::Result<Vec<u32>> {
+    let os = get_hytale_os(settings);
+    let arch = get_hytale_arch(settings);
     let mut discovered = Vec::new();
     const MAX_PROBE_VERSION: u32 = 100; // Realistic limit for Hytale versions for now
 
@@ -139,11 +140,14 @@ pub async fn find_all_versions(channel: &str) -> anyhow::Result<Vec<u32>> {
     Ok(discovered)
 }
 
-pub async fn get_remote_metadata(version: u32, channel: &str) -> anyhow::Result<LocalVersionInfo> {
+pub async fn get_remote_metadata(
+    settings: &GameSettings,
+    version: u32,
+    channel: &str,
+) -> anyhow::Result<LocalVersionInfo> {
     let client = &HTTP_CLIENT;
-
-    let os = get_hytale_os();
-    let arch = get_hytale_arch();
+    let os = get_hytale_os(settings);
+    let arch = get_hytale_arch(settings);
 
     let url = format!(
         "https://game-patches.hytale.com/patches/{}/{}/{}/0/{}.pwr",

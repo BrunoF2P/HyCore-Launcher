@@ -1,3 +1,4 @@
+use crate::database::{get_conn, with_transaction, DbPool};
 use crate::error::AppError;
 use crate::updater::env::get_hycore_data_dir;
 use rusqlite::params;
@@ -9,11 +10,14 @@ pub fn get_settings_path() -> std::path::PathBuf {
     get_hycore_data_dir().join("settings.json")
 }
 
-pub fn load_settings() -> GameSettings {
-    let conn = match crate::database::get_conn() {
+pub fn load_settings(pool: &DbPool) -> GameSettings {
+    let conn = match get_conn(pool) {
         Ok(c) => c,
         Err(e) => {
-            log::error!("Failed to open DB for loading settings: {}. Using defaults.", e);
+            log::error!(
+                "Failed to open DB for loading settings: {}. Using defaults.",
+                e
+            );
             return GameSettings::default();
         }
     };
@@ -76,15 +80,15 @@ pub fn load_settings() -> GameSettings {
         }
 
         // Save the generated ID immediately so it stays fixed
-        let _ = save_settings(&current_settings);
+        let _ = save_settings(pool, &current_settings);
     }
 
     if current_settings.player_name == "Player" {
         // Check old 'global' JSON in 'settings' table
-        let global_migration = conn.query_row(
+        let global_migration: std::result::Result<String, _> = conn.query_row(
             "SELECT value FROM settings WHERE key = 'global'",
             [],
-            |row| row.get::<_, String>(0),
+            |row| row.get(0),
         );
 
         if let Ok(json_str) = global_migration {
@@ -100,7 +104,7 @@ pub fn load_settings() -> GameSettings {
                     }
                 }
 
-                let _ = save_settings(&old_settings);
+                let _ = save_settings(pool, &old_settings);
                 let _ = conn.execute("DELETE FROM settings WHERE key = 'global'", []);
                 return old_settings;
             }
@@ -112,87 +116,87 @@ pub fn load_settings() -> GameSettings {
             if let Ok(name) = fs::read_to_string(&player_txt) {
                 current_settings.player_name = name.trim().to_string();
                 let _ = fs::remove_file(player_txt);
-                let _ = save_settings(&current_settings);
+                let _ = save_settings(pool, &current_settings);
             }
         }
     }
     current_settings
 }
 
-pub fn save_settings(settings: &GameSettings) -> anyhow::Result<()> {
-    let conn = crate::database::get_conn().map_err(|e| anyhow::anyhow!("DB connection failed: {}", e))?;
-    let mut clamped_ram = settings.ram_gb;
-    {
-        let total_gb = crate::system::info::get_total_ram_gb_internal().max(1);
-        if clamped_ram < 1 {
-            clamped_ram = 1;
-        } else if clamped_ram > total_gb {
-            clamped_ram = total_gb;
+pub fn save_settings(pool: &DbPool, settings: &GameSettings) -> anyhow::Result<()> {
+    // using with_transaction for concurrent write safety
+    with_transaction(pool, |conn| {
+        let mut clamped_ram = settings.ram_gb;
+        {
+            let total_gb = crate::system::info::get_total_ram_gb_internal().max(1);
+            if clamped_ram < 1 {
+                clamped_ram = 1;
+            } else if clamped_ram > total_gb {
+                clamped_ram = total_gb;
+            }
         }
-    }
 
-    match conn.execute(
-        "UPDATE launcher_settings SET 
-            ram_gb = ?, 
-            custom_java_args = ?, 
-            close_on_launch = ?, 
-            minimize_to_tray = ?, 
-            discord_rpc_enabled = ?, 
-            channel = ?, 
-            language = ?, 
-            active_version = ?, 
-            player_name = ?,
-            override_os = ?,
-            override_arch = ?,
-            online_mode = ?,
-            auth_domain = ?,
-            player_id = ?
-        WHERE id = 1",
-        params![
-            clamped_ram,
-            settings.custom_java_args,
-            settings.close_on_launch as i32,
-            settings.minimize_to_tray as i32,
-            settings.discord_rpc_enabled as i32,
-            settings.channel,
-            settings.language,
-            settings.active_version,
-            settings.player_name,
-            settings.override_os,
-            settings.override_arch,
-            settings.online_mode as i32,
-            settings.auth_domain,
-            settings.player_id,
-        ],
-    ) {
-        Ok(_) => {
-            log::info!(
-                "Settings saved successfully (Player: {}, ID: {})",
+        conn.execute(
+            "UPDATE launcher_settings SET 
+                ram_gb = ?, 
+                custom_java_args = ?, 
+                close_on_launch = ?, 
+                minimize_to_tray = ?, 
+                discord_rpc_enabled = ?, 
+                channel = ?, 
+                language = ?, 
+                active_version = ?, 
+                player_name = ?,
+                override_os = ?,
+                override_arch = ?,
+                online_mode = ?,
+                auth_domain = ?,
+                player_id = ?
+            WHERE id = 1",
+            params![
+                clamped_ram,
+                settings.custom_java_args,
+                settings.close_on_launch as i32,
+                settings.minimize_to_tray as i32,
+                settings.discord_rpc_enabled as i32,
+                settings.channel,
+                settings.language,
+                settings.active_version,
                 settings.player_name,
-                settings.player_id
-            );
-            Ok(())
-        }
-        Err(e) => {
-            log::error!("Failed to save settings: {}", e);
-            // If the failure is due to missing columns, we don't want to panic,
-            // but we should log it clearly.
-            Err(anyhow::anyhow!("Database error: {}", e))
-        }
-    }
+                settings.override_os,
+                settings.override_arch,
+                settings.online_mode as i32,
+                settings.auth_domain,
+                settings.player_id,
+            ],
+        )?;
+
+        log::info!(
+            "Settings saved successfully (Player: {}, ID: {})",
+            settings.player_name,
+            settings.player_id
+        );
+        Ok(())
+    })
+    .map_err(|e| {
+        log::error!("Failed to save settings: {}", e);
+        anyhow::anyhow!("Database error: {}", e)
+    })
 }
 
 #[tauri::command]
-pub fn get_game_settings() -> GameSettings {
-    load_settings()
+pub fn get_game_settings(db_pool: tauri::State<DbPool>) -> GameSettings {
+    load_settings(&db_pool)
 }
 
 #[tauri::command]
-pub fn set_game_settings(mut settings: GameSettings) -> Result<(), AppError> {
-    let current = load_settings();
+pub fn set_game_settings(
+    db_pool: tauri::State<DbPool>,
+    mut settings: GameSettings,
+) -> Result<(), AppError> {
+    let current = load_settings(&db_pool);
 
     // Safety check: Don't allow clearing player_id or player_name via simple setting updates
-    // if the current ones are already valid. This prevents race conditions from frontend.
     if settings.player_id.is_empty() && !current.player_id.is_empty() {
         settings.player_id = current.player_id;
     }
@@ -204,7 +208,7 @@ pub fn set_game_settings(mut settings: GameSettings) -> Result<(), AppError> {
         settings.player_name = current.player_name;
     }
 
-    save_settings(&settings)?;
+    save_settings(&db_pool, &settings)?;
     crate::social::discord::set_rpc_enabled(settings.discord_rpc_enabled);
     Ok(())
 }

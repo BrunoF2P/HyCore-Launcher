@@ -4,6 +4,7 @@ pub mod operations;
 pub mod profiles;
 pub mod types;
 
+use crate::database::DbPool;
 use crate::error::AppError;
 
 #[tauri::command]
@@ -17,37 +18,44 @@ pub async fn search_mods_cf(
 }
 
 #[tauri::command]
-pub async fn get_installed_mods() -> Result<Vec<types::Mod>, AppError> {
+pub async fn get_installed_mods(
+    db_pool: tauri::State<'_, DbPool>,
+) -> Result<Vec<types::Mod>, AppError> {
     log::info!("Fetching installed mods...");
-    let mods_list = operations::get_installed_mods()?;
+    let mods_list = operations::get_installed_mods(&db_pool)?;
     log::info!("Found {} installed mods", mods_list.len());
     Ok(mods_list)
 }
 
 #[tauri::command]
 pub async fn install_mod_cf(
+    db_pool: tauri::State<'_, DbPool>,
     window: tauri::Window,
     mod_id: i32,
     file_id: Option<i32>,
 ) -> Result<(), AppError> {
     log::info!("Installing mod_id: {:?}, file_id: {:?}", mod_id, file_id);
-    operations::install_mod_by_id(window, mod_id, file_id).await?;
+    operations::install_mod_by_id(&db_pool, window, mod_id, file_id).await?;
     log::info!("Mod installed successfully");
     Ok(())
 }
 
 #[tauri::command]
-pub async fn remove_mod(mod_id: String) -> Result<(), AppError> {
+pub async fn remove_mod(db_pool: tauri::State<'_, DbPool>, mod_id: String) -> Result<(), AppError> {
     log::info!("Removing mod: {}", mod_id);
-    operations::remove_mod(mod_id)?;
+    operations::remove_mod(&db_pool, mod_id)?;
     log::info!("Mod removed successfully");
     Ok(())
 }
 
 #[tauri::command]
-pub async fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), AppError> {
+pub async fn toggle_mod(
+    db_pool: tauri::State<'_, DbPool>,
+    mod_id: String,
+    enabled: bool,
+) -> Result<(), AppError> {
     log::info!("Toggling mod {} (enabled={})", mod_id, enabled);
-    operations::toggle_mod(mod_id, enabled)?;
+    operations::toggle_mod(&db_pool, mod_id, enabled)?;
     log::info!("Mod toggled successfully");
     Ok(())
 }

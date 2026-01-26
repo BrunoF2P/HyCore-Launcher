@@ -1,3 +1,5 @@
+use crate::settings::GameSettings;
+
 pub fn get_native_hytale_os() -> &'static str {
     if cfg!(target_os = "windows") {
         "windows"
@@ -16,17 +18,17 @@ pub fn get_native_hytale_arch() -> &'static str {
     }
 }
 
-pub fn get_hytale_os() -> String {
-    let settings = crate::settings::load_settings();
+pub fn get_hytale_os(settings: &GameSettings) -> String {
     settings
         .override_os
+        .clone()
         .unwrap_or_else(|| get_native_hytale_os().to_string())
 }
 
-pub fn get_hytale_arch() -> String {
-    let settings = crate::settings::load_settings();
+pub fn get_hytale_arch(settings: &GameSettings) -> String {
     settings
         .override_arch
+        .clone()
         .unwrap_or_else(|| get_native_hytale_arch().to_string())
 }
 

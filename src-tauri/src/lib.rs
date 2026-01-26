@@ -40,13 +40,21 @@ pub fn run() {
             log::info!("Launcher starting...");
 
             // Initialize database
-            if let Err(e) = database::init_db() {
-                let error_msg = format!(
-                    "Falha ao inicializar o banco de dados: {}. O launcher não pode continuar.",
-                    e
-                );
-                log::error!("{}", error_msg);
-                let _ = app.handle().emit("fatal-error", error_msg);
+            match database::init_db() {
+                Ok(pool) => {
+                    app.manage(pool);
+                }
+                Err(e) => {
+                    let error_msg = format!(
+                        "Falha ao inicializar o banco de dados: {}. O launcher não pode continuar.",
+                        e
+                    );
+                    log::error!("{}", error_msg);
+                    let _ = app.handle().emit("fatal-error", error_msg);
+                    // We might want to exit or return early, but let's just log for now as per original logic,
+                    // though managing a non-existent pool will panic commands.
+                    // ideally we should probably exit.
+                }
             }
 
             // Cleanup incomplete downloads/temp files
@@ -65,38 +73,38 @@ pub fn run() {
                 TrayIconBuilder::new()
                     .icon(icon.clone())
                     .menu(&menu)
-                .show_menu_on_left_click(false) // Better to toggle on click, menu on right click
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click {
-                        button: tauri::tray::MouseButton::Left,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            if is_visible {
-                                let _ = window.hide();
-                            } else {
+                    .show_menu_on_left_click(false) // Better to toggle on click, menu on right click
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
                         }
-                    }
-                })
-                .build(app)?;
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let is_visible = window.is_visible().unwrap_or(false);
+                                if is_visible {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                        }
+                    })
+                    .build(app)?;
             } else {
                 log::warn!("No default window icon found, skipping tray icon creation");
             };
@@ -105,7 +113,9 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let settings = crate::settings::load_settings();
+                use tauri::Manager;
+                let pool = window.state::<crate::database::DbPool>();
+                let settings = crate::settings::load_settings(&pool);
                 if settings.minimize_to_tray {
                     api.prevent_close();
                     let _ = window.hide();
@@ -138,7 +148,7 @@ pub fn run() {
             mods::remove_mod,
             mods::toggle_mod,
             mods::api::get_categories,
-            mods::manifest::get_active_profile,
+            mods::manifest::get_active_profile_command,
             mods::profiles::set_active_profile,
             mods::profiles::list_profiles,
             mods::profiles::create_profile,

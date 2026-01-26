@@ -1,11 +1,12 @@
 use super::types::ModManifest;
+use crate::database::{get_conn, DbPool};
 use crate::error::AppError;
 use crate::updater::env::get_user_data_dir;
 use std::fs;
 use std::path::PathBuf;
 
-pub fn get_mods_dir() -> PathBuf {
-    get_user_data_dir().join("Mods")
+pub fn get_mods_dir(pool: &DbPool) -> PathBuf {
+    get_user_data_dir(pool).join("Mods")
 }
 
 pub fn get_modpacks_dir() -> PathBuf {
@@ -30,8 +31,12 @@ pub fn get_active_profile_name_path() -> PathBuf {
 }
 
 #[tauri::command]
-pub fn get_active_profile() -> String {
-    let conn = match crate::database::get_conn() {
+pub fn get_active_profile_command(db_pool: tauri::State<DbPool>) -> String {
+    get_active_profile(&db_pool)
+}
+
+pub fn get_active_profile(pool: &DbPool) -> String {
+    let conn = match get_conn(pool) {
         Ok(c) => c,
         Err(_) => return "Default".to_string(),
     };
@@ -50,7 +55,7 @@ pub fn get_active_profile() -> String {
     if path.exists() {
         if let Ok(s) = fs::read_to_string(&path) {
             let name = s.trim().to_string();
-            let _ = set_active_profile_name(&name);
+            let _ = set_active_profile_name(pool, &name);
             return name;
         }
     }
@@ -58,9 +63,9 @@ pub fn get_active_profile() -> String {
     "Default".to_string()
 }
 
-pub fn set_active_profile_name(name: &str) -> Result<(), AppError> {
+pub fn set_active_profile_name(pool: &DbPool, name: &str) -> Result<(), AppError> {
     log::info!("Switching active profile to: {}", name);
-    let conn = crate::database::get_conn()?;
+    let conn = get_conn(pool)?;
 
     // Ensure profile exists in profiles table
     conn.execute(
@@ -78,14 +83,14 @@ pub fn set_active_profile_name(name: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn get_manifest_path() -> PathBuf {
-    let active = get_active_profile();
+pub fn get_manifest_path(pool: &DbPool) -> PathBuf {
+    let active = get_active_profile(pool);
     get_modpacks_dir().join(format!("{}.json", active))
 }
 
-pub fn load_manifest() -> Result<ModManifest, AppError> {
-    let active = get_active_profile();
-    let conn = crate::database::get_conn()?;
+pub fn load_manifest(pool: &DbPool) -> Result<ModManifest, AppError> {
+    let active = get_active_profile(pool);
+    let conn = get_conn(pool)?;
 
     log::info!("Loading mods for profile {} from DB", active);
 
@@ -130,12 +135,12 @@ pub fn load_manifest() -> Result<ModManifest, AppError> {
 
     // Migration logic
     if mods.is_empty() {
-        let json_path = get_manifest_path();
+        let json_path = get_manifest_path(pool);
         if json_path.exists() {
             log::info!("Migrating mod manifest from JSON: {:?}", json_path);
             if let Ok(data) = fs::read(&json_path) {
                 if let Ok(manifest) = serde_json::from_slice::<ModManifest>(&data) {
-                    let _ = save_manifest(&manifest);
+                    let _ = save_manifest(pool, &manifest);
                     return Ok(manifest);
                 }
             }
@@ -148,9 +153,9 @@ pub fn load_manifest() -> Result<ModManifest, AppError> {
     })
 }
 
-pub fn save_manifest(manifest: &ModManifest) -> Result<(), AppError> {
-    let active = get_active_profile();
-    let conn = crate::database::get_conn()?;
+pub fn save_manifest(pool: &DbPool, manifest: &ModManifest) -> Result<(), AppError> {
+    let active = get_active_profile(pool);
+    let conn = get_conn(pool)?;
 
     log::info!("Saving mod manifest for profile {} to DB", active);
 

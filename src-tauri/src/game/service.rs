@@ -1,3 +1,4 @@
+use crate::database::DbPool;
 use crate::error::AppError;
 use std::future::Future;
 use std::path::PathBuf;
@@ -37,15 +38,18 @@ impl GameHost for TauriGameHost {
 pub struct GameService;
 
 impl GameService {
-    pub async fn launch_game<H: GameHost>(host: &H) -> Result<(), AppError> {
-        let game_dir = crate::updater::env::get_game_dir();
-        let client_dir = crate::updater::env::get_client_dir();
-        let user_dir = crate::updater::env::get_user_data_dir();
-        let settings = crate::settings::load_settings();
+    pub async fn launch_game<H: GameHost>(pool: &DbPool, host: &H) -> Result<(), AppError> {
+        let game_dir = crate::updater::env::get_game_dir(pool);
+        let client_dir = crate::updater::env::get_client_dir(pool);
+        let user_dir = crate::updater::env::get_user_data_dir(pool);
+        let settings = crate::settings::load_settings(pool);
 
         crate::social::discord::update_discord_status(
             "Jogando",
-            &format!("Perfil: {}", crate::mods::manifest::get_active_profile()),
+            &format!(
+                "Perfil: {}",
+                crate::mods::manifest::get_active_profile(pool)
+            ),
         );
 
         // 1. Validation
@@ -89,7 +93,7 @@ impl GameService {
         }
 
         // 6. Launch
-        let player_name = crate::player::get_player_name();
+        let player_name = crate::player::get_player_name(pool);
         let offline_uuid = settings.player_id.clone();
 
         let (auth_mode, identity_token, session_token) = if settings.online_mode {

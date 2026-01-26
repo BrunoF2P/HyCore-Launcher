@@ -32,6 +32,12 @@ pub enum AppError {
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
 
+    #[error("Invalid path: {0}")]
+    InvalidPath(String),
+
+    #[error("Partial uninstall failed - some components could not be removed: {0}")]
+    PartialUninstall(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

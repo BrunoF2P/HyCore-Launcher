@@ -1,3 +1,4 @@
+use crate::database::DbPool;
 use crate::error::AppError;
 use uuid::Uuid;
 
@@ -19,7 +20,11 @@ pub fn get_offline_uuid(nick: &str) -> String {
 }
 
 #[tauri::command]
-pub async fn launch_game(app: tauri::AppHandle, window: tauri::Window) -> Result<(), AppError> {
+pub async fn launch_game(
+    db_pool: tauri::State<'_, DbPool>,
+    app: tauri::AppHandle,
+    window: tauri::Window,
+) -> Result<(), AppError> {
     let host = service::TauriGameHost::new(app, window);
-    service::GameService::launch_game(&host).await
+    service::GameService::launch_game(&db_pool, &host).await
 }

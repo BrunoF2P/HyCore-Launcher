@@ -10,6 +10,7 @@ pub use download::download_with_retry;
 pub use system::check_system_requirements;
 pub use types::{LocalManifest, LocalVersionInfo, SystemRequirements, UpdateStatus};
 
+use crate::database::DbPool;
 use crate::error::AppError;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -21,90 +22,97 @@ static UPDATE_LOCK: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
 use crate::platform::{get_hytale_arch, get_hytale_os};
 
-pub fn get_local_manifest() -> LocalManifest {
-    let conn = match crate::database::get_conn() {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("Failed to open DB for local manifest: {}. Using default.", e);
-            return LocalManifest::default();
-        }
-    };
-    let mut stmt = match conn.prepare(
-        "SELECT version, channel, installed_at, last_modified, size, etag FROM installed_versions",
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            log::error!("Failed to prepare statement: {}", e);
-            return LocalManifest::default();
-        }
-    };
-
-    let version_iter = match stmt.query_map([], |row| {
-        Ok(LocalVersionInfo {
-            version: row.get(0)?,
-            channel: row.get(1)?,
-            installed_at: row.get(2)?,
-            last_modified: row.get(3)?,
-            size: row.get(4)?,
-            etag: row.get(5)?,
-        })
-    }) {
-        Ok(iter) => iter,
-        Err(e) => {
-            log::error!("Failed to query installed versions: {}", e);
-            return LocalManifest::default();
-        }
-    };
-
+pub fn get_local_manifest(pool: &DbPool) -> LocalManifest {
     let mut installed = Vec::new();
-    for v in version_iter {
-        if let Ok(info) = v {
-            // Validate existence of folder
-            let dir = env::get_version_dir(info.version);
-            if dir.exists() {
-                installed.push(info);
-            } else {
-                // Cleanup missing from DB
-                let _ = conn.execute(
-                    "DELETE FROM installed_versions WHERE version = ?",
-                    [info.version],
-                );
-            }
-        }
-    }
 
-    // Migration
-    if installed.is_empty() {
-        let json_path = env::get_versions_manifest_path();
-        if json_path.exists() {
-            if let Ok(content) = fs::read_to_string(&json_path) {
-                if let Ok(manifest) = serde_json::from_str::<LocalManifest>(&content) {
-                    for v in &manifest.installed {
-                        let _ = conn.execute(
-                            "INSERT OR IGNORE INTO installed_versions (version, channel, installed_at, last_modified, size, etag) 
-                             VALUES (?, ?, ?, ?, ?, ?)",
-                            rusqlite::params![v.version, v.channel, v.installed_at, v.last_modified, v.size, v.etag],
-                        );
-                    }
-                    installed = manifest.installed;
+    // Scope to ensure the database connection is dropped before calling load_settings
+    {
+        let conn = match crate::database::get_conn(pool) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!(
+                    "Failed to open DB for local manifest: {}. Using default.",
+                    e
+                );
+                return LocalManifest::default();
+            }
+        };
+        let mut stmt = match conn.prepare(
+            "SELECT version, channel, installed_at, last_modified, size, etag FROM installed_versions",
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to prepare statement: {}", e);
+                return LocalManifest::default();
+            }
+        };
+
+        let version_iter = match stmt.query_map([], |row| {
+            Ok(LocalVersionInfo {
+                version: row.get(0)?,
+                channel: row.get(1)?,
+                installed_at: row.get(2)?,
+                last_modified: row.get(3)?,
+                size: row.get(4)?,
+                etag: row.get(5)?,
+            })
+        }) {
+            Ok(iter) => iter,
+            Err(e) => {
+                log::error!("Failed to query installed versions: {}", e);
+                return LocalManifest::default();
+            }
+        };
+
+        for v in version_iter {
+            if let Ok(info) = v {
+                // Validate existence of folder
+                let dir = env::get_version_dir(info.version);
+                if dir.exists() {
+                    installed.push(info);
+                } else {
+                    // Cleanup missing from DB
+                    let _ = conn.execute(
+                        "DELETE FROM installed_versions WHERE version = ?",
+                        [info.version],
+                    );
                 }
             }
         }
-    }
 
-    let settings = crate::settings::load_settings();
+        // Migration
+        if installed.is_empty() {
+            let json_path = env::get_versions_manifest_path();
+            if json_path.exists() {
+                if let Ok(content) = fs::read_to_string(&json_path) {
+                    if let Ok(manifest) = serde_json::from_str::<LocalManifest>(&content) {
+                        for v in &manifest.installed {
+                            let _ = conn.execute(
+                                "INSERT OR IGNORE INTO installed_versions (version, channel, installed_at, last_modified, size, etag) 
+                                 VALUES (?, ?, ?, ?, ?, ?)",
+                                rusqlite::params![v.version, v.channel, v.installed_at, v.last_modified, v.size.map(|s| s as i64), v.etag],
+                            );
+                        }
+                        installed = manifest.installed;
+                    }
+                }
+            }
+        }
+    } // Connection is dropped here
+
+    let settings = crate::settings::load_settings(pool);
     LocalManifest {
         installed,
         active_version: settings.active_version,
     }
 }
 
-pub async fn is_update_available() -> Result<(bool, u32), AppError> {
-    let settings = crate::settings::load_settings();
+pub async fn is_update_available(pool: &DbPool) -> Result<(bool, u32), AppError> {
+    let settings = crate::settings::load_settings(pool);
     let active_version = settings.active_version;
 
     // If no version is active or latest isn't found, find latest
-    let latest = check::find_latest_version(&settings.channel)
+    let latest = check::find_latest_version(&settings, &settings.channel)
         .await
         .map_err(AppError::from)?;
 
@@ -114,7 +122,7 @@ pub async fn is_update_available() -> Result<(bool, u32), AppError> {
         active_version
     };
 
-    let manifest = get_local_manifest();
+    let manifest = get_local_manifest(pool);
     let local_info = manifest
         .installed
         .into_iter()
@@ -129,7 +137,7 @@ pub async fn is_update_available() -> Result<(bool, u32), AppError> {
     let local = local_info.unwrap();
 
     // If it's installed, check for hotfixes/metadata changes
-    match check::get_remote_metadata(target_version, &settings.channel).await {
+    match check::get_remote_metadata(&settings, target_version, &settings.channel).await {
         Ok(remote) => {
             let size_changed = local.size.is_some() && remote.size != local.size;
             let modified_changed =
@@ -155,7 +163,7 @@ pub async fn is_update_available() -> Result<(bool, u32), AppError> {
     Ok((false, target_version))
 }
 
-pub async fn run_update(window: Window) -> Result<(), AppError> {
+pub async fn run_update(pool: &DbPool, window: Window) -> Result<(), AppError> {
     let reqs = check_system_requirements().await;
     if !reqs.meets_requirements {
         return Err(AppError::Unknown(format!(
@@ -168,16 +176,16 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
         .await
         .map_err(AppError::from)?;
 
-    let settings = crate::settings::load_settings();
-    let latest = check::find_latest_version(&settings.channel)
+    let settings = crate::settings::load_settings(pool);
+    let latest = check::find_latest_version(&settings, &settings.channel)
         .await
         .map_err(AppError::from)?;
-    let remote_metadata = check::get_remote_metadata(latest, &settings.channel)
+    let remote_metadata = check::get_remote_metadata(&settings, latest, &settings.channel)
         .await
         .ok();
 
-    let os = get_hytale_os();
-    let arch = get_hytale_arch();
+    let os = get_hytale_os(&settings);
+    let arch = get_hytale_arch(&settings);
 
     let patch_url = format!(
         "https://game-patches.hytale.com/patches/{}/{}/{}/0/{}.pwr",
@@ -191,7 +199,9 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
         .map_err(AppError::from)?;
 
     if pwr_path.exists() {
-        let file_size = fs::metadata(&pwr_path).map_err(AppError::Io)?.len();
+        let file_size = fs::metadata(&pwr_path)
+            .map_err(|e| AppError::Unknown(e.to_string()))?
+            .len();
 
         if file_size < 100_000 {
             let _ = fs::remove_file(&pwr_path);
@@ -228,7 +238,7 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
         .arg(&pwr_path)
         .arg(&game_dir)
         .output()
-        .map_err(AppError::Io)?;
+        .map_err(|e| AppError::Unknown(e.to_string()))?;
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -253,7 +263,7 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
     let _ = fs::remove_dir_all(staging_dir);
 
     // Update local manifest in DB
-    let conn = crate::database::get_conn().map_err(AppError::from)?;
+    let conn = crate::database::get_conn(pool).map_err(AppError::from)?;
     let version_info = if let Some(mut info) = remote_metadata {
         info.installed_at = Some(time::OffsetDateTime::now_utc().to_string());
         info
@@ -274,15 +284,15 @@ pub async fn run_update(window: Window) -> Result<(), AppError> {
             version_info.channel,
             version_info.installed_at,
             version_info.last_modified,
-            version_info.size,
+            version_info.size.map(|s| s as i64),
             version_info.etag
         ],
     );
 
     // Update active version in settings
-    let mut settings = crate::settings::load_settings();
+    let mut settings = crate::settings::load_settings(pool);
     settings.active_version = latest;
-    let _ = crate::settings::set_game_settings(settings);
+    let _ = crate::settings::save_settings(pool, &settings);
 
     log::info!("Update complete! Version installed to {:?}", game_dir);
 
@@ -310,9 +320,11 @@ pub async fn check_update_requirements() -> Result<SystemRequirements, AppError>
 }
 
 #[tauri::command]
-pub async fn check_for_game_update() -> Result<(bool, u32), AppError> {
+pub async fn check_for_game_update(
+    db_pool: tauri::State<'_, DbPool>,
+) -> Result<(bool, u32), AppError> {
     log::info!("Checking for game update...");
-    match is_update_available().await {
+    match is_update_available(&db_pool).await {
         Ok(res) => {
             log::info!("Game update check: available={}, version={}", res.0, res.1);
             Ok(res)
@@ -325,7 +337,10 @@ pub async fn check_for_game_update() -> Result<(bool, u32), AppError> {
 }
 
 #[tauri::command]
-pub async fn start_game_update(window: tauri::Window) -> Result<(), AppError> {
+pub async fn start_game_update(
+    db_pool: tauri::State<'_, DbPool>,
+    window: tauri::Window,
+) -> Result<(), AppError> {
     {
         let mut lock = UPDATE_LOCK.lock().unwrap();
         if *lock {
@@ -337,8 +352,12 @@ pub async fn start_game_update(window: tauri::Window) -> Result<(), AppError> {
         *lock = true;
     }
 
+    // Access inner pool to keep it alive or clone if needed, but we can just pass reference to async fn
+    // However, for async, we should clone the Arc<Mutex<Connection>> (DbPool is Arc)
+    let pool = db_pool.inner().clone();
+
     log::info!("Starting game update process...");
-    let result = run_update(window).await;
+    let result = run_update(&pool, window).await;
 
     {
         let mut lock = UPDATE_LOCK.lock().unwrap();
@@ -364,23 +383,26 @@ pub async fn java_bin_path_command() -> std::path::PathBuf {
 }
 
 #[tauri::command]
-pub fn get_local_manifest_command() -> LocalManifest {
-    get_local_manifest()
+pub fn get_local_manifest_command(db_pool: tauri::State<DbPool>) -> LocalManifest {
+    get_local_manifest(&db_pool)
 }
 
 #[tauri::command]
-pub async fn get_available_versions_command() -> Result<Vec<u32>, AppError> {
-    let settings = crate::settings::load_settings();
-    check::find_all_versions(&settings.channel)
+pub async fn get_available_versions_command(
+    db_pool: tauri::State<'_, DbPool>,
+) -> Result<Vec<u32>, AppError> {
+    let settings = crate::settings::load_settings(&db_pool);
+    check::find_all_versions(&settings, &settings.channel)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn switch_version_command(version: u32) -> Result<(), AppError> {
-    let mut settings = crate::settings::load_settings();
+pub fn switch_version_command(db_pool: tauri::State<DbPool>, version: u32) -> Result<(), AppError> {
+    let mut settings = crate::settings::load_settings(&db_pool);
     settings.active_version = version;
-    crate::settings::set_game_settings(settings)?;
+    crate::settings::save_settings(&db_pool, &settings)
+        .map_err(|e| AppError::Unknown(e.to_string()))?;
     log::info!("Switched active version to {}", version);
     Ok(())
 }

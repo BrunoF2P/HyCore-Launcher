@@ -3,6 +3,7 @@ use super::manifest::{
 };
 use super::operations::{install_mod_by_id, toggle_mod};
 use super::types::{ModManifest, Modpack};
+use crate::database::DbPool;
 use crate::error::AppError;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -15,16 +16,25 @@ static PROFILE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 fn validate_profile_name(name: &str) -> Result<(), AppError> {
     if name.trim().is_empty() {
-        return Err(AppError::Unknown("Profile name cannot be empty".to_string()));
+        return Err(AppError::Unknown(
+            "Profile name cannot be empty".to_string(),
+        ));
     }
-    if name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != ' ') {
+    if name
+        .chars()
+        .any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != ' ')
+    {
         return Err(AppError::Unknown("Profile name contains invalid characters. Only letters, numbers, spaces, -, and _ are allowed.".to_string()));
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn create_profile(name: String, empty: bool) -> Result<(), AppError> {
+pub async fn create_profile(
+    db_pool: tauri::State<'_, DbPool>,
+    name: String,
+    empty: bool,
+) -> Result<(), AppError> {
     let _guard = PROFILE_LOCK.lock().await;
     validate_profile_name(&name)?;
     log::info!("Creating new profile: {} (empty={})", name, empty);
@@ -48,7 +58,7 @@ pub async fn create_profile(name: String, empty: bool) -> Result<(), AppError> {
         }
     } else {
         log::info!("Cloning current manifest for new profile");
-        load_manifest()?
+        load_manifest(&db_pool)?
     };
 
     let data = serde_json::to_string_pretty(&manifest).map_err(|e| {
@@ -66,14 +76,14 @@ pub async fn create_profile(name: String, empty: bool) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub async fn list_profiles() -> Result<Vec<Modpack>, AppError> {
+pub async fn list_profiles(db_pool: tauri::State<'_, DbPool>) -> Result<Vec<Modpack>, AppError> {
     let _guard = PROFILE_LOCK.lock().await;
     log::info!("Listing available profiles...");
     let profiles_dir = get_modpacks_dir();
     if !profiles_dir.exists() {
         // Create default if nothing exists
         log::info!("Profiles directory not found, creating Default profile");
-        let _ = create_profile("Default".to_string(), true).await;
+        let _ = create_profile(db_pool, "Default".to_string(), true).await;
         return Ok(vec![Modpack {
             name: "Default".to_string(),
             mod_count: 0,
@@ -118,8 +128,12 @@ pub async fn list_profiles() -> Result<Vec<Modpack>, AppError> {
 
     if packs.is_empty() {
         log::info!("No profile files found, creating Default profile");
-        let _ = create_profile("Default".to_string(), true).await;
-        let _ = create_profile("Default".to_string(), true).await;
+        let _ = create_profile(db_pool.clone(), "Default".to_string(), true).await;
+        // Wait, clone of state might be heavy? No, State clone is cheap (Arc).
+        // But `create_profile` takes State.
+        // Actually, preventing infinite recursion if create_profile calls something.
+        // It's cleaner to just create default manually or assume create_profile works.
+        // But since I have the pool, I can pass it.
         return Ok(vec![Modpack {
             name: "Default".to_string(),
             mod_count: 0,
@@ -134,7 +148,11 @@ pub async fn list_profiles() -> Result<Vec<Modpack>, AppError> {
 }
 
 #[tauri::command]
-pub async fn set_active_profile(window: Window, name: String) -> Result<(), AppError> {
+pub async fn set_active_profile(
+    db_pool: tauri::State<'_, DbPool>,
+    window: Window,
+    name: String,
+) -> Result<(), AppError> {
     let _guard = PROFILE_LOCK.lock().await;
     validate_profile_name(&name)?;
     log::info!("Setting active profile to: {}", name);
@@ -151,22 +169,22 @@ pub async fn set_active_profile(window: Window, name: String) -> Result<(), AppE
     // 1. Disable all currently active mods from the current profile
     // This ensures no mod files are left enabled when switching context
     log::info!("Disabling mods from current profile before switch...");
-    let current_manifest = load_manifest()?;
+    let current_manifest = load_manifest(&db_pool)?;
     for m in current_manifest.mods {
         if m.enabled {
-            let _ = toggle_mod(m.id.clone(), false);
+            let _ = toggle_mod(&db_pool, m.id.clone(), false);
         }
     }
 
     // 2. Update active profile state
-    set_active_profile_name(&name)?;
+    set_active_profile_name(&db_pool, &name)?;
 
     // 3. Synchronize physical files with the new profile's requirements
     log::info!("Synchronizing files for new profile: {}", name);
-    sync_profile(window, name).await
+    sync_profile(&db_pool, window, name).await
 }
 
-pub async fn sync_profile(window: Window, name: String) -> Result<(), AppError> {
+pub async fn sync_profile(pool: &DbPool, window: Window, name: String) -> Result<(), AppError> {
     log::info!("Syncing profile: {}", name);
     let pack_path = get_modpacks_dir().join(format!("{}.json", name));
     let data = fs::read(&pack_path).map_err(|e| {
@@ -203,7 +221,7 @@ pub async fn sync_profile(window: Window, name: String) -> Result<(), AppError> 
                     pack_mod.name,
                     cf_id
                 );
-                let _ = install_mod_by_id(window.clone(), cf_id, pack_mod.file_id).await;
+                let _ = install_mod_by_id(pool, window.clone(), cf_id, pack_mod.file_id).await;
             } else {
                 log::warn!(
                     "Mod {} missing locally and has no CurseForge ID to re-install",
@@ -217,7 +235,7 @@ pub async fn sync_profile(window: Window, name: String) -> Result<(), AppError> 
                 pack_mod.name,
                 pack_mod.enabled
             );
-            let _ = toggle_mod(pack_mod.id, pack_mod.enabled);
+            let _ = toggle_mod(pool, pack_mod.id, pack_mod.enabled);
         }
     }
 
@@ -226,7 +244,10 @@ pub async fn sync_profile(window: Window, name: String) -> Result<(), AppError> 
 }
 
 #[tauri::command]
-pub async fn delete_profile(name: String) -> Result<(), AppError> {
+pub async fn delete_profile(
+    db_pool: tauri::State<'_, DbPool>,
+    name: String,
+) -> Result<(), AppError> {
     let _guard = PROFILE_LOCK.lock().await;
     validate_profile_name(&name)?;
     log::info!("Deleting profile: {}", name);
@@ -237,9 +258,9 @@ pub async fn delete_profile(name: String) -> Result<(), AppError> {
         ));
     }
 
-    if get_active_profile() == name {
+    if get_active_profile(&db_pool) == name {
         log::info!("Deleting currently active profile, switching to Default");
-        let _ = set_active_profile_name("Default");
+        let _ = set_active_profile_name(&db_pool, "Default");
     }
 
     let pack_path = get_modpacks_dir().join(format!("{}.json", name));

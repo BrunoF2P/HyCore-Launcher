@@ -1,3 +1,4 @@
+use crate::database::DbPool;
 use std::fs;
 use std::path::PathBuf;
 
@@ -8,11 +9,11 @@ pub fn get_hycore_data_dir() -> PathBuf {
     path
 }
 
-pub fn get_game_dir() -> PathBuf {
-    let active = crate::mods::manifest::get_active_profile();
+pub fn get_game_dir(pool: &DbPool) -> PathBuf {
+    let active = crate::mods::manifest::get_active_profile(pool);
 
     // If we have an active version in settings, use the SHARED versions folder
-    let settings = crate::settings::load_settings();
+    let settings = crate::settings::load_settings(pool);
     if settings.active_version > 0 {
         return get_hycore_data_dir()
             .join("game")
@@ -39,12 +40,12 @@ pub fn get_version_dir(version: u32) -> PathBuf {
         .join(version.to_string())
 }
 
-pub fn get_client_dir() -> PathBuf {
-    get_game_dir().join("Client")
+pub fn get_client_dir(pool: &DbPool) -> PathBuf {
+    get_game_dir(pool).join("Client")
 }
 
-pub fn get_user_data_dir() -> PathBuf {
-    let active = crate::mods::manifest::get_active_profile();
+pub fn get_user_data_dir(pool: &DbPool) -> PathBuf {
+    let active = crate::mods::manifest::get_active_profile(pool);
     if active == "Default" {
         get_hycore_data_dir().join("UserData")
     } else {
@@ -62,18 +63,6 @@ pub fn get_versions_manifest_path() -> PathBuf {
 
 pub fn get_version_file_path() -> PathBuf {
     get_versions_manifest_path()
-}
-
-pub fn get_legacy_version_file_path() -> PathBuf {
-    let active = crate::mods::manifest::get_active_profile();
-    if active == "Default" {
-        get_hycore_data_dir().join("version.txt")
-    } else {
-        get_hycore_data_dir()
-            .join("instances")
-            .join(active)
-            .join("version.txt")
-    }
 }
 
 pub fn get_jre_dir() -> PathBuf {

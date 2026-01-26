@@ -18,7 +18,7 @@ pub struct SystemRequirements {
 pub struct LocalVersionInfo {
     pub version: u32,
     pub channel: String,
-    pub size: Option<u64>,
+    pub size: Option<i64>,
     pub installed_at: Option<String>,
     pub last_modified: Option<String>,
     pub etag: Option<String>,

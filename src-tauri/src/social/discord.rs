@@ -1,4 +1,3 @@
-use crate::settings::load_settings;
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -6,8 +5,9 @@ use std::sync::Mutex;
 static DISCORD_CLIENT: Lazy<Mutex<Option<DiscordIpcClient>>> = Lazy::new(|| Mutex::new(None));
 
 pub fn init_discord() {
-    let settings = load_settings();
-    set_rpc_enabled(settings.discord_rpc_enabled);
+    // Discord RPC will be enabled/disabled via settings commands which have pool access
+    // This just initializes the static client holder
+    log::info!("Discord RPC client holder initialized (will be configured via settings)");
 }
 
 pub fn set_rpc_enabled(enabled: bool) {

@@ -1,18 +1,20 @@
 use super::api;
 use super::manifest::{get_mods_dir, load_manifest, save_manifest};
 use super::types::Mod;
+use crate::database::DbPool;
 use crate::error::AppError;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Window;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-pub fn get_installed_mods() -> Result<Vec<Mod>, AppError> {
-    let manifest = load_manifest()?;
+pub fn get_installed_mods(pool: &DbPool) -> Result<Vec<Mod>, AppError> {
+    let manifest = load_manifest(pool)?;
     Ok(manifest.mods)
 }
 
 pub async fn install_mod_by_id(
+    pool: &DbPool,
     window: Window,
     mod_id: i32,
     file_id: Option<i32>,
@@ -54,7 +56,7 @@ pub async fn install_mod_by_id(
     }
     let download_url = file.download_url.unwrap();
 
-    let mods_dir = get_mods_dir();
+    let mods_dir = get_mods_dir(pool);
     fs::create_dir_all(&mods_dir).map_err(|e| AppError::DirCreation(e.to_string()))?;
 
     let dest_path = mods_dir.join(&file.file_name);
@@ -64,7 +66,7 @@ pub async fn install_mod_by_id(
         .await
         .map_err(|e| AppError::Unknown(format!("Mod download failed: {}", e)))?;
 
-    let mut manifest = load_manifest()?;
+    let mut manifest = load_manifest(pool)?;
 
     let mod_uuid = format!("cf-{}", mod_id);
     log::info!("Updating manifest for mod: {} ({})", details.name, mod_uuid);
@@ -117,14 +119,14 @@ pub async fn install_mod_by_id(
     };
 
     manifest.mods.push(new_mod);
-    save_manifest(&manifest)?;
+    save_manifest(pool, &manifest)?;
 
     Ok(())
 }
 
-pub fn remove_mod(mod_id: String) -> Result<(), AppError> {
+pub fn remove_mod(pool: &DbPool, mod_id: String) -> Result<(), AppError> {
     log::info!("Removing mod: {}", mod_id);
-    let mut manifest = load_manifest()?;
+    let mut manifest = load_manifest(pool)?;
 
     let mut mod_path: Option<String> = None;
 
@@ -153,14 +155,14 @@ pub fn remove_mod(mod_id: String) -> Result<(), AppError> {
         return Err(AppError::ModNotFound(mod_id));
     }
 
-    save_manifest(&manifest)?;
+    save_manifest(pool, &manifest)?;
     log::info!("Mod removed from manifest: {}", mod_id);
     Ok(())
 }
 
-pub fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), AppError> {
+pub fn toggle_mod(pool: &DbPool, mod_id: String, enabled: bool) -> Result<(), AppError> {
     log::info!("Toggling mod {} (enabled={})", mod_id, enabled);
-    let mut manifest = load_manifest()?;
+    let mut manifest = load_manifest(pool)?;
     let mut found = false;
 
     for m in &mut manifest.mods {
@@ -207,15 +209,17 @@ pub fn toggle_mod(mod_id: String, enabled: bool) -> Result<(), AppError> {
         return Err(AppError::ModNotFound(mod_id));
     }
 
-    save_manifest(&manifest)?;
+    save_manifest(pool, &manifest)?;
     log::info!("Mod toggle complete for {}", mod_id);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn check_mods_updates() -> Result<Vec<String>, AppError> {
+pub async fn check_mods_updates(
+    db_pool: tauri::State<'_, DbPool>,
+) -> Result<Vec<String>, AppError> {
     log::info!("Checking for mod updates...");
-    let mut manifest = load_manifest()?;
+    let mut manifest = load_manifest(&db_pool)?;
     let mut mod_ids = Vec::with_capacity(manifest.mods.len());
     for m in &manifest.mods {
         if let Some(id) = m.curse_forge_id {
@@ -268,7 +272,7 @@ pub async fn check_mods_updates() -> Result<Vec<String>, AppError> {
             "Found updates for {} mods, saving manifest",
             updated_ids.len()
         );
-        save_manifest(&manifest)?;
+        save_manifest(&db_pool, &manifest)?;
     } else {
         log::info!("All mods are up to date");
     }
