@@ -10,7 +10,8 @@ interface CategorySidebarProps {
 
 export const CategorySidebar = ({ onSelectCategory, activeCategoryId }: CategorySidebarProps) => {
     const { t } = useTranslation();
-    const { categories, fetchCategories } = useModStore();
+    const categories = useModStore(state => state.categories);
+    const fetchCategories = useModStore(state => state.fetchCategories);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {

@@ -9,7 +9,9 @@ interface ModDetailOverlayProps {
 }
 
 export const ModDetailOverlay = ({ mod, onClose }: ModDetailOverlayProps) => {
-    const { installMod, installingIds, installedMods } = useModStore();
+    const installMod = useModStore(state => state.installMod);
+    const installingIds = useModStore(state => state.installingIds);
+    const installedMods = useModStore(state => state.installedMods);
     const isInstalling = installingIds.includes(mod.id);
     const isInstalled = installedMods.some(m => m.curseForgeId === mod.id);
 

@@ -6,8 +6,16 @@ import { useState, useRef, useEffect } from "react";
 
 export const VersionSelector = () => {
     const { t } = useTranslation();
-    const { installedVersions, activeVersion, switchVersion, availableVersions, checkForUpdates, latestVersion, buttonState } = useGameStore();
-    const { settings, updateSettings } = useSettingsStore();
+    const installedVersions = useGameStore(state => state.installedVersions);
+    const activeVersion = useGameStore(state => state.activeVersion);
+    const switchVersion = useGameStore(state => state.switchVersion);
+    const availableVersions = useGameStore(state => state.availableVersions);
+    const checkForUpdates = useGameStore(state => state.checkForUpdates);
+    const latestVersion = useGameStore(state => state.latestVersion);
+    const buttonState = useGameStore(state => state.buttonState);
+
+    const settings = useSettingsStore(state => state.settings);
+    const updateSettings = useSettingsStore(state => state.updateSettings);
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 

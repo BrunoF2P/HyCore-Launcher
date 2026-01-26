@@ -7,8 +7,14 @@ import { VersionSelector } from "./VersionSelector";
 
 export const LaunchSection = () => {
     const { t } = useTranslation();
-    const { buttonState, launchGame, checkForUpdates, setButtonState } = useGameStore();
-    const { status, isUpdating, startUpdate } = useUpdateStore();
+    const buttonState = useGameStore(state => state.buttonState);
+    const launchGame = useGameStore(state => state.launchGame);
+    const checkForUpdates = useGameStore(state => state.checkForUpdates);
+    const setButtonState = useGameStore(state => state.setButtonState);
+
+    const status = useUpdateStore(state => state.status);
+    const isUpdating = useUpdateStore(state => state.isUpdating);
+    const startUpdate = useUpdateStore(state => state.startUpdate);
 
     useEffect(() => {
         if (!isUpdating && status.stage === 'done') {

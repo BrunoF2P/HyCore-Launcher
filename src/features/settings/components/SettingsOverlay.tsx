@@ -10,7 +10,10 @@ interface SettingsOverlayProps {
 
 export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
     const { t } = useTranslation();
-    const { settings, loadSettings, updateSettings, loading } = useSettingsStore();
+    const settings = useSettingsStore(state => state.settings);
+    const loadSettings = useSettingsStore(state => state.loadSettings);
+    const updateSettings = useSettingsStore(state => state.updateSettings);
+    const loading = useSettingsStore(state => state.loading);
     const [localSettings, setLocalSettings] = useState(settings);
     const [systemRamGb, setSystemRamGb] = useState<number>(32); // Default fallback
 

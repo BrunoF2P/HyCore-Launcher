@@ -14,13 +14,11 @@ export default function ModsPage({ onBack }: ModsPageProps) {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'browse' | 'library' | 'modpacks'>('library');
 
-    const {
-        installedMods,
-        activeProfile,
-        fetchInstalledMods,
-        fetchActiveProfile,
-        checkUpdates
-    } = useModStore();
+    const installedMods = useModStore(state => state.installedMods);
+    const activeProfile = useModStore(state => state.activeProfile);
+    const fetchInstalledMods = useModStore(state => state.fetchInstalledMods);
+    const fetchActiveProfile = useModStore(state => state.fetchActiveProfile);
+    const checkUpdates = useModStore(state => state.checkUpdates);
 
     // Initial fetch
     useEffect(() => {

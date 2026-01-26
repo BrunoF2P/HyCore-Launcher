@@ -9,13 +9,19 @@ import { useSettingsStore } from "../../../features/settings/store/useSettingsSt
 
 export const UserProfile = () => {
     const { t } = useTranslation();
-    const { settings, updateSettings } = useSettingsStore();
+    const settings = useSettingsStore(state => state.settings);
+    const updateSettings = useSettingsStore(state => state.updateSettings);
+
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [appVersion, setAppVersion] = useState("...");
-    const { checking: launcherChecking, checkSelfUpdate } = useLauncherStore();
-    const { buttonState, checkForUpdates } = useGameStore();
+
+    const launcherChecking = useLauncherStore(state => state.checking);
+    const checkSelfUpdate = useLauncherStore(state => state.checkSelfUpdate);
+
+    const buttonState = useGameStore(state => state.buttonState);
+    const checkForUpdates = useGameStore(state => state.checkForUpdates);
 
     const isCheckingUpdates = launcherChecking || buttonState === 'checking';
 

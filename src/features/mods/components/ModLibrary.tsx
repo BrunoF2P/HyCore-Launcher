@@ -5,13 +5,11 @@ import { useTranslation } from 'react-i18next';
 
 export default function ModLibrary() {
     const { t } = useTranslation();
-    const {
-        installedMods: mods,
-        toggleMod: onToggle,
-        removeMod: onRemove,
-        updateMod: onUpdate,
-        loading: isLoading
-    } = useModStore();
+    const mods = useModStore(state => state.installedMods);
+    const onToggle = useModStore(state => state.toggleMod);
+    const onRemove = useModStore(state => state.removeMod);
+    const onUpdate = useModStore(state => state.updateMod);
+    const isLoading = useModStore(state => state.loading);
 
     const handleToggle = (mod: any, enabled: boolean) => {
         onToggle(mod.id, enabled).catch(err => alert(t('mods.toggle_failed') + ': ' + err));

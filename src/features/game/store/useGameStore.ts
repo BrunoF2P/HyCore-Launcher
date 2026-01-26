@@ -72,13 +72,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     checkForUpdates: async () => {
+        const { fetchLocalVersions, fetchAvailableVersions } = get();
+
         set({ buttonState: 'checking', lastError: null });
-        await Promise.all([
-            get().fetchLocalVersions(),
-            get().fetchAvailableVersions()
-        ]);
 
         try {
+            await Promise.all([
+                fetchLocalVersions(),
+                fetchAvailableVersions()
+            ]);
+
             const [updateAvailable] = await invoke<[boolean, number]>('check_for_game_update');
 
             set({

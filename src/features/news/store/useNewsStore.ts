@@ -13,6 +13,7 @@ export const useNewsStore = create<NewsState>((set) => ({
     news: [],
     loading: true,
     error: null,
+
     fetchNews: async () => {
         set({ loading: true, error: null });
         try {
@@ -20,7 +21,10 @@ export const useNewsStore = create<NewsState>((set) => ({
             set({ news: data, loading: false });
         } catch (error) {
             console.error("Failed to fetch news:", error);
-            set({ error: (error as Error).message, loading: false });
+            set({
+                error: error instanceof Error ? error.message : String(error),
+                loading: false
+            });
         }
     },
 }));

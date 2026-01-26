@@ -5,15 +5,13 @@ import { useModStore } from "../store/useModStore";
 
 export const ProfileManager = () => {
     const { t } = useTranslation();
-    const {
-        profiles,
-        activeProfile,
-        fetchProfiles,
-        fetchActiveProfile,
-        createProfile,
-        deleteProfile,
-        setActiveProfile
-    } = useModStore();
+    const profiles = useModStore(state => state.profiles);
+    const activeProfile = useModStore(state => state.activeProfile);
+    const fetchProfiles = useModStore(state => state.fetchProfiles);
+    const fetchActiveProfile = useModStore(state => state.fetchActiveProfile);
+    const createProfile = useModStore(state => state.createProfile);
+    const deleteProfile = useModStore(state => state.deleteProfile);
+    const setActiveProfile = useModStore(state => state.setActiveProfile);
 
     const [newProfileName, setNewProfileName] = useState("");
     const [isCreating, setIsCreating] = useState(false);

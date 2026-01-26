@@ -9,7 +9,9 @@ import { ModDetailOverlay } from './ModDetailOverlay';
 import { useModStore } from '../store/useModStore';
 
 export default function ModBrowser() {
-    const { installedMods, installingIds, installMod } = useModStore();
+    const installedMods = useModStore(state => state.installedMods);
+    const installingIds = useModStore(state => state.installingIds);
+    const installMod = useModStore(state => state.installMod);
     const { t } = useTranslation();
 
     const onInstallRequest = (mod: any) => {
