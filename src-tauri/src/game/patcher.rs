@@ -8,7 +8,6 @@ use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-/// ASM 9.7 JARs (DualAuthPatcher). Garante em `patcher_lib` em hycore data.
 async fn ensure_asm_libs() -> anyhow::Result<PathBuf> {
     const ASM_9_7: &[(&str, &str)] = &[
         ("asm-9.7.jar", "https://repo1.maven.org/maven2/org/ow2/asm/asm/9.7/asm-9.7.jar"),
@@ -633,7 +632,10 @@ impl ClientPatcher {
 
         let resource_dir: Option<PathBuf> = crate::get_app_handle()
             .path()
-            .resolve("resources/patcher/DualAuthPatcher.java", tauri::path::BaseDirectory::Resource)
+            .resolve(
+                "resources/patcher/DualAuthPatcher.java",
+                tauri::path::BaseDirectory::Resource,
+            )
             .ok()
             .and_then(|p: PathBuf| p.parent().map(PathBuf::from))
             .filter(|d: &PathBuf| d.join("DualAuthPatcher.java").exists());
@@ -651,10 +653,22 @@ impl ClientPatcher {
             d
         };
 
-        let patcher_java = resource_dir.join("DualAuthPatcher.java");
 
-        if !patcher_java.exists() {
-            anyhow::bail!("DualAuthPatcher.java not found at {:?}", patcher_java);
+        let patcher_src = resource_dir.join("DualAuthPatcher.java");
+        if !patcher_src.exists() {
+            anyhow::bail!("DualAuthPatcher.java not found at {:?}", patcher_src);
+        }
+
+        let work_dir = crate::updater::env::get_hycore_data_dir().join("server_patcher");
+        let _ = fs::create_dir_all(&work_dir);
+
+        let patcher_java = work_dir.join("DualAuthPatcher.java");
+        if let Err(e) = fs::copy(&patcher_src, &patcher_java) {
+            anyhow::bail!(
+                "Failed to copy DualAuthPatcher.java to writable dir {:?}: {}",
+                work_dir,
+                e
+            );
         }
         let javac_exec =
             java_exec
@@ -667,7 +681,7 @@ impl ClientPatcher {
         }
 
         log::info!("Checking if DualAuthPatcher is already compiled...");
-        let patcher_class = resource_dir.join("DualAuthPatcher.class");
+        let patcher_class = work_dir.join("DualAuthPatcher.class");
 
         if !patcher_class.exists() {
             log::info!("Compiling DualAuthPatcher.java using {:?}...", javac_exec);
@@ -675,7 +689,7 @@ impl ClientPatcher {
                 .arg("-cp")
                 .arg(&javac_cp)
                 .arg("DualAuthPatcher.java")
-                .current_dir(&resource_dir)
+                .current_dir(&work_dir)
                 .stderr(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()?;
@@ -720,7 +734,7 @@ impl ClientPatcher {
             .arg("DualAuthPatcher")
             .arg(server_jar)
             .env("HYTALE_AUTH_DOMAIN", &self.target_domain)
-            .current_dir(&resource_dir)
+            .current_dir(&work_dir)
             .stderr(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
