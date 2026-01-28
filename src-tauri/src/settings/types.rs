@@ -16,6 +16,7 @@ pub struct GameSettings {
     pub online_mode: bool,
     pub auth_domain: String,
     pub player_id: String,
+    pub dual_auth: bool,
 }
 
 impl Default for GameSettings {
@@ -35,8 +36,9 @@ impl Default for GameSettings {
             override_os: None,
             override_arch: None,
             online_mode: true,
-            auth_domain: "sanasol.ws".to_string(),
+            auth_domain: "auth.sanasol.ws".to_string(),
             player_id: "".to_string(),
+            dual_auth: true,
         }
     }
 }

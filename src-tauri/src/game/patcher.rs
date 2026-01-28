@@ -1,19 +1,51 @@
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::env;
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use zip::write::SimpleFileOptions;
-use zip::{ZipArchive, ZipWriter};
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+
+/// Redacts output that may contain a JWT (tokens start with "eyJ" in base64). Never log tokens.
+fn redact_jwt_if_present(s: &str) -> Cow<'_, str> {
+    if s.contains("eyJ") {
+        Cow::Borrowed("[REDACTED: output may have contained token]")
+    } else {
+        Cow::Borrowed(s)
+    }
+}
 
 pub const ORIGINAL_DOMAIN: &str = "hytale.com";
-pub const DEFAULT_AUTH_DOMAIN: &str = "sanasol.ws";
+pub const DEFAULT_AUTH_DOMAIN: &str = "auth.sanasol.ws";
+pub const MIN_DOMAIN_LENGTH: usize = 4;
+pub const MAX_DOMAIN_LENGTH: usize = 16;
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PatchMode {
+    Direct,
+    Split,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DomainStrategy {
+    pub mode: PatchMode,
+    pub main_domain: String,
+    pub subdomain_prefix: String,
+    pub description: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PatchFlag {
     pub patched_at: String,
     pub original_domain: String,
     pub target_domain: String,
+    pub patch_mode: PatchMode,
+    pub main_domain: String,
+    pub subdomain_prefix: String,
     pub patcher_version: String,
+    pub verified: String,
 }
 
 pub struct PatchResult {
@@ -27,25 +59,204 @@ pub struct ClientPatcher {
 
 impl ClientPatcher {
     pub fn new(target_domain: Option<String>) -> Self {
-        let domain = target_domain.unwrap_or_else(|| DEFAULT_AUTH_DOMAIN.to_string());
+        let mut domain = target_domain.unwrap_or_else(|| DEFAULT_AUTH_DOMAIN.to_string());
 
-        // Domain length must match original for binary patching to work
-        if domain.len() != ORIGINAL_DOMAIN.len() {
+        if domain.len() < MIN_DOMAIN_LENGTH || domain.len() > MAX_DOMAIN_LENGTH {
             log::warn!(
-                "Domain {} length ({}) doesn't match original {} ({}), using default",
+                "Domain \"{}\" length ({}) is invalid (min {}, max {}), using default",
                 domain,
                 domain.len(),
-                ORIGINAL_DOMAIN,
-                ORIGINAL_DOMAIN.len()
+                MIN_DOMAIN_LENGTH,
+                MAX_DOMAIN_LENGTH
             );
-            return Self {
-                target_domain: DEFAULT_AUTH_DOMAIN.to_string(),
-            };
+            domain = DEFAULT_AUTH_DOMAIN.to_string();
         }
 
         Self {
             target_domain: domain,
         }
+    }
+
+    pub fn get_domain_strategy(&self) -> DomainStrategy {
+        let target = &self.target_domain;
+        let suffix_len = 10.min(target.len());
+        let main_domain = target[target.len() - suffix_len..].to_string();
+        let subdomain_prefix = target[..target.len() - suffix_len].to_string();
+
+        if !subdomain_prefix.is_empty() {
+            DomainStrategy {
+                mode: PatchMode::Split,
+                main_domain: main_domain.clone(),
+                subdomain_prefix: subdomain_prefix.clone(),
+                description: format!(
+                    "Universal Split: prefix=\"{}\", main=\"{}\"",
+                    subdomain_prefix, main_domain
+                ),
+            }
+        } else {
+            DomainStrategy {
+                mode: PatchMode::Direct,
+                main_domain: target.clone(),
+                subdomain_prefix: String::new(),
+                description: format!("Direct: \"{}\"", target),
+            }
+        }
+    }
+
+    /// Convert a string to the length-prefixed byte format used by the client
+    /// Format: [length:u8] [00 00 00 padding] [char1] [00] [char2] [00] ... [lastChar]
+    /// Note: No null byte after the last character
+    fn to_length_prefixed(s: &str) -> Vec<u8> {
+        let length = s.len();
+        let mut result = Vec::with_capacity(4 + length + length.saturating_sub(1));
+
+        result.push(length as u8);
+        result.extend_from_slice(&[0x00, 0x00, 0x00]);
+
+        let bytes = s.as_bytes();
+        for i in 0..length {
+            result.push(bytes[i]);
+            if i < length - 1 {
+                result.push(0x00);
+            }
+        }
+
+        result
+    }
+
+    fn replace_bytes(data: &mut Vec<u8>, old_bytes: &[u8], new_bytes: &[u8]) -> usize {
+        let mut count = 0;
+        let mut i = 0;
+        let old_len = old_bytes.len();
+        let new_len = new_bytes.len();
+
+        if new_len > old_len {
+            log::error!(
+                "Cannot replace bytes: new length {} > old length {}",
+                new_len,
+                old_len
+            );
+            return 0;
+        }
+
+        while i <= data.len().saturating_sub(old_len) {
+            if &data[i..i + old_len] == old_bytes {
+                data[i..i + new_len].copy_from_slice(new_bytes);
+                count += 1;
+                i += old_len;
+            } else {
+                match data[i + 1..].windows(old_len).position(|w| w == old_bytes) {
+                    Some(pos) => i += 1 + pos,
+                    None => break,
+                }
+            }
+        }
+        count
+    }
+
+    pub fn apply_domain_patches(&self, data: &mut Vec<u8>) -> usize {
+        let strategy = self.get_domain_strategy();
+        let mut total_count = 0;
+
+        log::info!("Patching strategy: {}", strategy.description);
+
+        let old_sentry = "https://ca900df42fcf57d4dd8401a86ddd7da2@sentry.hytale.com/2";
+        let new_sentry = format!("https://t@{}/2", self.target_domain);
+
+        total_count += Self::replace_bytes(
+            data,
+            &Self::to_length_prefixed(old_sentry),
+            &Self::to_length_prefixed(&new_sentry),
+        );
+
+        let replacement_prefix = format!("https://{}", strategy.subdomain_prefix);
+        let prefixes = [
+            "https://tools.",
+            "https://sessions.",
+            "https://account-data.",
+            "https://telemetry.",
+        ];
+
+        for prefix in prefixes {
+            total_count += Self::replace_bytes(
+                data,
+                &Self::to_length_prefixed(prefix),
+                &Self::to_length_prefixed(&replacement_prefix),
+            );
+
+            let old_utf16 = Self::to_utf16le(prefix);
+            let new_utf16 = Self::to_utf16le(&replacement_prefix);
+            total_count += Self::replace_bytes(data, &old_utf16, &new_utf16);
+        }
+
+        total_count += Self::replace_bytes(
+            data,
+            &Self::to_length_prefixed(ORIGINAL_DOMAIN),
+            &Self::to_length_prefixed(&strategy.main_domain),
+        );
+
+        let domain_utf16_old = Self::to_utf16le(ORIGINAL_DOMAIN);
+        let domain_utf16_new = Self::to_utf16le(&strategy.main_domain);
+        total_count += Self::replace_bytes(data, &domain_utf16_old, &domain_utf16_new);
+
+        let old_sessions = format!("sessions.{}", ORIGINAL_DOMAIN);
+        let new_sessions = self.target_domain.clone();
+
+        total_count += Self::replace_bytes(
+            data,
+            &Self::to_length_prefixed(&old_sessions),
+            &Self::to_length_prefixed(&new_sessions),
+        );
+
+        total_count += Self::replace_bytes(
+            data,
+            &Self::to_utf16le(&old_sessions),
+            &Self::to_utf16le(&new_sessions),
+        );
+
+        if strategy.main_domain.len() == ORIGINAL_DOMAIN.len() {
+            total_count += Self::replace_bytes(
+                data,
+                ORIGINAL_DOMAIN.as_bytes(),
+                strategy.main_domain.as_bytes(),
+            );
+        }
+
+        total_count
+    }
+
+    pub fn patch_discord_url(&self, data: &mut Vec<u8>) -> usize {
+        let old_url = ".gg/hytale";
+        let new_url = ".gg/MHkEjepMQ7";
+
+        let engine_new_url = if new_url.len() > old_url.len() {
+            log::warn!(
+                "Discord URL too long for engine binary ({}), truncating to {}",
+                new_url.len(),
+                old_url.len()
+            );
+            &new_url[..old_url.len()]
+        } else {
+            new_url
+        };
+
+        let count = Self::replace_bytes(
+            data,
+            &Self::to_length_prefixed(old_url),
+            &Self::to_length_prefixed(engine_new_url),
+        );
+
+        let utf16_new_url = if new_url.len() > old_url.len() {
+            &new_url[..old_url.len()]
+        } else {
+            new_url
+        };
+
+        let old_utf16 = Self::to_utf16le(old_url);
+        let new_utf16 = Self::to_utf16le(utf16_new_url);
+
+        let utf16_count = Self::replace_bytes(data, &old_utf16, &new_utf16);
+        count + utf16_count
     }
 
     fn to_utf16le(s: &str) -> Vec<u8> {
@@ -60,7 +271,6 @@ impl ClientPatcher {
     pub fn find_and_replace_domain_smart(&self, data: &mut [u8]) -> usize {
         let mut count = 0;
 
-        // Get UTF-16LE patterns for old and new domains (without last char)
         let old_no_last = Self::to_utf16le(&ORIGINAL_DOMAIN[..ORIGINAL_DOMAIN.len() - 1]);
         let new_no_last = Self::to_utf16le(&self.target_domain[..self.target_domain.len() - 1]);
 
@@ -80,11 +290,8 @@ impl ClientPatcher {
                 if last_char_pos < data.len() {
                     let last_char_first_byte = data[last_char_pos];
 
-                    // Check if this looks like a valid domain occurrence
                     if last_char_first_byte == old_last_char_byte {
-                        // Copy new domain (without last char) in-place
                         data[idx..idx + new_no_last.len()].copy_from_slice(&new_no_last);
-                        // Update last char
                         data[last_char_pos] = new_last_char_byte;
                         count += 1;
                     }
@@ -92,24 +299,6 @@ impl ClientPatcher {
                 pos = idx + 1;
             } else {
                 break;
-            }
-        }
-        count
-    }
-
-    pub fn find_and_replace_utf8(&self, data: &mut [u8]) -> usize {
-        let old_bytes = ORIGINAL_DOMAIN.as_bytes();
-        let new_bytes = self.target_domain.as_bytes();
-        let mut count = 0;
-
-        let mut pos = 0;
-        while pos <= data.len().saturating_sub(old_bytes.len()) {
-            if &data[pos..pos + old_bytes.len()] == old_bytes {
-                data[pos..pos + new_bytes.len()].copy_from_slice(new_bytes);
-                count += 1;
-                pos += old_bytes.len();
-            } else {
-                pos += 1;
             }
         }
         count
@@ -125,9 +314,75 @@ impl ClientPatcher {
 
     fn is_already_patched(&self, binary_path: &Path) -> bool {
         let flag_path = self.get_flag_path(binary_path);
-        if let Ok(content) = fs::read_to_string(flag_path) {
+        log::debug!("Checking if already patched: {:?}", binary_path);
+
+        if let Ok(content) = fs::read_to_string(&flag_path) {
             if let Ok(flag) = serde_json::from_str::<PatchFlag>(&content) {
-                return flag.target_domain == self.target_domain;
+                if flag.target_domain == self.target_domain {
+                    let ext = binary_path
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_lowercase());
+
+                    if ext == Some("jar".to_string()) {
+                        log::info!("Verifying server JAR patch status: {:?}", binary_path);
+                        if let Ok(file) = fs::File::open(binary_path) {
+                            if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                                if archive
+                                    .by_name(
+                                        "com/hypixel/hytale/server/core/auth/DualJwksFetcher.class",
+                                    )
+                                    .is_ok()
+                                {
+                                    log::info!(
+                                        "Server JAR verification passed for {:?}",
+                                        binary_path
+                                    );
+                                    return true;
+                                }
+                            }
+                        }
+                        log::warn!(
+                            "Server flag exists but JAR not patched, re-patching {:?}",
+                            binary_path
+                        );
+                        return false;
+                    }
+
+                    let backup_path = binary_path.with_extension("original");
+                    if backup_path.exists() {
+                        if let (Ok(curr), Ok(orig)) =
+                            (fs::metadata(binary_path), fs::metadata(&backup_path))
+                        {
+                            if curr.len() == orig.len() {
+                                return true;
+                            }
+                        }
+                    }
+
+                    if let Ok(data) = fs::read(binary_path) {
+                        let strategy = self.get_domain_strategy();
+                        let pattern = Self::to_length_prefixed(&strategy.main_domain);
+
+                        log::info!(
+                            "Performing full binary verification for {:?}...",
+                            binary_path
+                        );
+                        if data.windows(pattern.len()).any(|w| w == pattern) {
+                            log::info!(
+                                "Binary verification passed (full scan) for {:?}",
+                                binary_path
+                            );
+                            return true;
+                        } else {
+                            log::warn!(
+                                "Flag exists but binary not patched, re-patching {:?}",
+                                binary_path
+                            );
+                            return false;
+                        }
+                    }
+                }
             }
         }
         false
@@ -140,9 +395,64 @@ impl ClientPatcher {
         backup_path.set_file_name(name);
 
         if !backup_path.exists() {
+            log::info!("Creating initial backup at {:?}", backup_path);
             fs::copy(binary_path, &backup_path)?;
+            return Ok(backup_path);
         }
+
+        let current_meta = fs::metadata(binary_path)?;
+        let backup_meta = fs::metadata(&backup_path)?;
+
+        if current_meta.len() != backup_meta.len() {
+            let timestamp = time::OffsetDateTime::now_utc()
+                .format(&time::format_description::parse(
+                    "[year]-[month]-[day]T[hour]-[minute]-[second]",
+                )?)
+                .unwrap();
+
+            let mut old_backup_path = binary_path.to_path_buf();
+            let mut old_name = old_backup_path
+                .file_name()
+                .unwrap_or_default()
+                .to_os_string();
+            old_name.push(format!(".original.{}", timestamp));
+            old_backup_path.set_file_name(old_name);
+
+            log::info!(
+                "File updated, archiving old backup to {:?}",
+                old_backup_path
+            );
+            fs::rename(&backup_path, &old_backup_path)?;
+            fs::copy(binary_path, &backup_path)?;
+        } else {
+            log::debug!("Backup already exists and is up to date");
+        }
+
         Ok(backup_path)
+    }
+
+    /// Restore the original client binary from backup
+    #[allow(dead_code)]
+    pub fn restore_client(&self, binary_path: &Path) -> anyhow::Result<bool> {
+        let mut backup_path = binary_path.to_path_buf();
+        let mut name = backup_path.file_name().unwrap_or_default().to_os_string();
+        name.push(".original");
+        backup_path.set_file_name(name);
+
+        if backup_path.exists() {
+            fs::copy(&backup_path, binary_path)?;
+
+            let flag_path = self.get_flag_path(binary_path);
+            if flag_path.exists() {
+                fs::remove_file(flag_path)?;
+            }
+
+            log::info!("Client restored from backup: {:?}", binary_path);
+            Ok(true)
+        } else {
+            log::warn!("No backup found to restore for {:?}", binary_path);
+            Ok(false)
+        }
     }
 
     pub fn patch_client(&self, client_path: &Path) -> PatchResult {
@@ -154,6 +464,10 @@ impl ClientPatcher {
         }
 
         if self.is_already_patched(client_path) {
+            log::info!(
+                "Client already patched for {}, skipping",
+                self.target_domain
+            );
             return PatchResult {
                 success: true,
                 error: None,
@@ -180,16 +494,28 @@ impl ClientPatcher {
             }
         };
 
-        let mut count = self.find_and_replace_domain_smart(&mut data);
-        count += self.find_and_replace_utf8(&mut data);
+        log::info!("Patching client binary: {:?}", client_path);
 
-        log::info!(
-            "Client patching found {} occurrences of {}",
-            count,
-            self.target_domain
-        );
+        let mut total_count = self.apply_domain_patches(&mut data);
+        total_count += self.patch_discord_url(&mut data);
 
-        if count > 0 {
+        if total_count == 0 {
+            log::info!("No occurrences found with length-prefixed format, trying legacy format...");
+            let mut legacy_data = data.clone();
+            let legacy_count = self.find_and_replace_domain_smart(&mut legacy_data);
+
+            if legacy_count > 0 {
+                log::info!("Found {} occurrences with legacy format", legacy_count);
+                data = legacy_data;
+                total_count = legacy_count;
+            } else {
+                log::warn!(
+                    "No occurrences found - binary may already be modified or has different format"
+                );
+            }
+        }
+
+        if total_count > 0 {
             if let Err(e) = fs::write(client_path, data) {
                 return PatchResult {
                     success: false,
@@ -197,11 +523,16 @@ impl ClientPatcher {
                 };
             }
 
+            let strategy = self.get_domain_strategy();
             let flag = PatchFlag {
                 patched_at: time::OffsetDateTime::now_utc().to_string(),
                 original_domain: ORIGINAL_DOMAIN.to_string(),
                 target_domain: self.target_domain.clone(),
+                patch_mode: strategy.mode,
+                main_domain: strategy.main_domain,
+                subdomain_prefix: strategy.subdomain_prefix,
                 patcher_version: env!("CARGO_PKG_VERSION").to_string(),
+                verified: "binary_contents".to_string(),
             };
 
             if let Ok(json) = serde_json::to_string_pretty(&flag) {
@@ -215,123 +546,168 @@ impl ClientPatcher {
         }
     }
 
-    pub fn patch_server(&self, server_path: &Path) -> PatchResult {
-        if !server_path.exists() {
-            return PatchResult {
-                success: false,
-                error: Some(format!("Server JAR not found: {:?}", server_path)),
-            };
+    pub async fn run_dual_auth_patcher(
+        &self,
+        java_exec: &Path,
+        server_jar: &Path,
+        _output_jar: &Path,
+    ) -> anyhow::Result<()> {
+        log::info!("Starting server patching verification...");
+        if self.is_already_patched(server_jar) {
+            log::info!(
+                "Server already patched for {}, skipping",
+                self.target_domain
+            );
+            return Ok(());
         }
 
-        if self.is_already_patched(server_path) {
-            return PatchResult {
-                success: true,
-                error: None,
-            };
+        let mut resource_dir = env::current_dir()?;
+
+        if !resource_dir.ends_with("src-tauri") && resource_dir.join("src-tauri").exists() {
+            resource_dir = resource_dir.join("src-tauri");
         }
 
-        let backup_path = match self.backup_binary(server_path) {
-            Ok(p) => p,
-            Err(e) => {
-                return PatchResult {
-                    success: false,
-                    error: Some(format!("Failed to create backup: {}", e)),
-                };
-            }
-        };
+        resource_dir = resource_dir.join("resources").join("patcher");
+        log::info!(
+            "Using server patcher resource directory: {:?}",
+            resource_dir
+        );
 
-        let file = match fs::File::open(&backup_path) {
-            Ok(f) => f,
-            Err(e) => {
-                return PatchResult {
-                    success: false,
-                    error: Some(format!("Failed to open original JAR: {}", e)),
+        let patcher_java = resource_dir.join("DualAuthPatcher.java");
+
+        if !patcher_java.exists() {
+            anyhow::bail!("DualAuthPatcher.java not found at {:?}", patcher_java);
+        }
+        let javac_exec =
+            java_exec
+                .parent()
+                .unwrap()
+                .join(if cfg!(windows) { "javac.exe" } else { "javac" });
+
+        if !javac_exec.exists() {
+            anyhow::bail!("javac not found in JRE/JDK bin directory: {:?}. Please ensure you have a JDK installed.", javac_exec);
+        }
+
+        log::info!("Checking if DualAuthPatcher is already compiled...");
+        let patcher_class = resource_dir.join("DualAuthPatcher.class");
+
+        if !patcher_class.exists() {
+            log::info!("Compiling DualAuthPatcher.java using {:?}...", javac_exec);
+            let mut child = Command::new(&javac_exec)
+                .arg("-cp")
+                .arg("lib/*")
+                .arg("DualAuthPatcher.java")
+                .current_dir(&resource_dir)
+                .stderr(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()?;
+
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+            let mut stdout_reader = BufReader::new(stdout).lines();
+            let mut stderr_reader = BufReader::new(stderr).lines();
+
+            loop {
+                tokio::select! {
+                    result = stdout_reader.next_line() => {
+                        match result {
+                            Ok(Some(line)) => log::info!("[DualAuth-Compile] {}", line),
+                            Ok(None) => break,
+                            Err(e) => log::error!("[DualAuth-Compile] Error reading stdout: {}", e),
+                        }
+                    }
+                    result = stderr_reader.next_line() => {
+                        match result {
+                            Ok(Some(line)) => log::error!("[DualAuth-Compile Error] {}", line),
+                            Ok(None) => {},
+                            Err(e) => log::error!("[DualAuth-Compile] Error reading stderr: {}", e),
+                        }
+                    }
                 }
             }
+
+            let status = child.wait().await?;
+            if !status.success() {
+                anyhow::bail!("Java compilation failed (see logs above)");
+            }
+            log::info!("Compilation successful.");
+        } else {
+            log::info!("DualAuthPatcher.class found, reusing existing compilation.");
+        }
+
+        log::info!("Running DualAuthPatcher against {:?}", server_jar);
+        let mut child = Command::new(java_exec)
+            .arg("-cp")
+            .arg(".:lib/*")
+            .arg("DualAuthPatcher")
+            .arg(server_jar)
+            .env("HYTALE_AUTH_DOMAIN", &self.target_domain)
+            .current_dir(&resource_dir)
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+
+        let mut stdout_reader = BufReader::new(stdout).lines();
+        let mut stderr_reader = BufReader::new(stderr).lines();
+
+        // DualAuthPatcher.java must use truncateToken() for any output that may contain tokens;
+        // we never log raw tokens from child stdout/stderr.
+        loop {
+            tokio::select! {
+                result = stdout_reader.next_line() => {
+                    match result {
+                        Ok(Some(line)) => log::info!("[DualAuth] {}", redact_jwt_if_present(&line)),
+                        Ok(None) => break,
+                        Err(e) => log::error!("[DualAuth] Error reading stdout: {}", e),
+                    }
+                }
+                    result = stderr_reader.next_line() => {
+                        match result {
+                            Ok(Some(line)) => log::error!("[DualAuth Error] {}", redact_jwt_if_present(&line)),
+                            Ok(None) => {}
+                            Err(e) => log::error!("[DualAuth] Error reading stderr: {}", e),
+                        }
+                    }
+            }
+        }
+
+        let status = child.wait().await?;
+        if !status.success() {
+            anyhow::bail!("Java patching failed (see logs above)");
+        }
+
+        let strategy = self.get_domain_strategy();
+        let flag = PatchFlag {
+            patched_at: time::OffsetDateTime::now_utc().to_string(),
+            original_domain: ORIGINAL_DOMAIN.to_string(),
+            target_domain: self.target_domain.clone(),
+            patch_mode: strategy.mode,
+            main_domain: strategy.main_domain,
+            subdomain_prefix: strategy.subdomain_prefix,
+            patcher_version: env!("CARGO_PKG_VERSION").to_string(),
+            verified: "binary_contents".to_string(),
         };
 
-        let mut archive = match ZipArchive::new(file) {
-            Ok(a) => a,
-            Err(e) => {
-                return PatchResult {
-                    success: false,
-                    error: Some(format!("Failed to parse JAR: {}", e)),
-                }
-            }
-        };
-
-        let mut new_jar_data = Vec::new();
-        let mut writer = ZipWriter::new(std::io::Cursor::new(&mut new_jar_data));
-        let mut total_count = 0;
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).unwrap();
-            let name = file.name().to_string();
-            let mut content = Vec::new();
-            file.read_to_end(&mut content).unwrap();
-
-            let should_patch = name.ends_with(".class")
-                || name.ends_with(".properties")
-                || name.ends_with(".json")
-                || name.ends_with(".xml")
-                || name.ends_with(".yml");
-
-            if should_patch {
-                let count = self.find_and_replace_utf8(&mut content);
-                if count > 0 {
-                    log::debug!("Patched {} in JAR entry {}", self.target_domain, name);
-                    total_count += count;
-                }
-            }
-
-            let options = SimpleFileOptions::default()
-                .compression_method(file.compression())
-                .unix_permissions(file.unix_mode().unwrap_or(0o644));
-
-            writer.start_file(name, options).unwrap();
-            writer.write_all(&content).unwrap();
+        if let Ok(json) = serde_json::to_string_pretty(&flag) {
+            let _ = fs::write(self.get_flag_path(server_jar), json);
         }
 
-        writer.finish().unwrap();
-
-        if total_count > 0 {
-            if let Err(e) = fs::write(server_path, new_jar_data) {
-                return PatchResult {
-                    success: false,
-                    error: Some(format!("Failed to write patched server: {}", e)),
-                };
-            }
-
-            let flag = PatchFlag {
-                patched_at: time::OffsetDateTime::now_utc().to_string(),
-                original_domain: ORIGINAL_DOMAIN.to_string(),
-                target_domain: self.target_domain.clone(),
-                patcher_version: env!("CARGO_PKG_VERSION").to_string(),
-            };
-
-            if let Ok(json) = serde_json::to_string_pretty(&flag) {
-                let _ = fs::write(self.get_flag_path(server_path), json);
-            }
-        }
-
-        PatchResult {
-            success: true,
-            error: None,
-        }
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
     pub async fn sign_macos_app(&self, app_path: &Path) -> anyhow::Result<()> {
         log::info!("Signing macOS app bundle: {:?}", app_path);
 
-        // Remove quarantine
         let _ = tokio::process::Command::new("xattr")
             .arg("-cr")
             .arg(app_path)
             .status()
             .await;
 
-        // Sign ad-hoc
         let status = tokio::process::Command::new("codesign")
             .arg("--force")
             .arg("--deep")

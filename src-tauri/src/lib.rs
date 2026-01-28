@@ -10,18 +10,25 @@ pub mod settings;
 pub mod social;
 mod system;
 mod updater;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+static APP_HANDLE: once_cell::sync::OnceCell<tauri::AppHandle> = once_cell::sync::OnceCell::new();
+
+pub fn get_app_handle() -> &'static tauri::AppHandle {
+    APP_HANDLE.get().expect("App handle not initialized")
+}
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use tauri::Manager;
     tauri::Builder::default()
         .setup(|app| {
+            APP_HANDLE.set(app.handle().clone()).unwrap();
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::TrayIconBuilder;
+            use tauri::Manager;
 
             // Initialize logging
             let _ = app.handle().plugin(

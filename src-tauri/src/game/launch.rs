@@ -25,7 +25,6 @@ pub async fn validate_installation(client_dir: &Path) -> Result<(), AppError> {
 pub async fn ensure_permissions(executable: &Path) -> Result<(), AppError> {
     use std::os::unix::fs::PermissionsExt;
 
-    // We use tokio::fs for async metadata check to avoid blocking
     if let Ok(metadata) = tokio::fs::metadata(executable).await {
         let mut perms = metadata.permissions();
         if perms.mode() & 0o111 == 0 {
@@ -120,7 +119,6 @@ pub async fn spawn_game_process(
     cmd.env("_JAVA_OPTIONS", jvm_args);
     cmd.arg("--java-exec").arg(java_exec);
 
-    // Platform specific env vars
     #[cfg(target_os = "linux")]
     {
         if let Some(path) = std::env::var_os("LD_LIBRARY_PATH") {
@@ -154,7 +152,6 @@ pub async fn spawn_game_process(
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    // Spawn async
     cmd.spawn()
         .map_err(|e| AppError::Unknown(format!("Failed to launch game: {}", e)))?;
 
