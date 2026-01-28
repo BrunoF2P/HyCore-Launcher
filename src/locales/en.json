@@ -42,10 +42,15 @@
         "language_en": "English",
         "language_pt": "Portuguese",
         "language_es": "Spanish",
+        "language_ru": "Russian",
         "advanced_on": "Advanced Mode: On",
         "advanced_off": "Advanced Mode: Off",
         "advanced_hint": "Enable Advanced Mode to adjust RAM allocation and JVM arguments.",
-        "save_changes": "Save Changes"
+        "save_changes": "Save Changes",
+        "identity_title": "Player Identity",
+        "identity_desc": "A persistent UUID used for online authentication and cosmetics. Keep it stable to preserve your character across sessions.",
+        "identity_pending": "Identity will be generated on next launch.",
+        "identity_reset": "Reset Identity"
     },
     "mods": {
         "title": "Mods",

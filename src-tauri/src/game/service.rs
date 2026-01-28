@@ -8,7 +8,8 @@ use std::pin::Pin;
 pub trait GameHost: Send + Sync {
     fn ensure_java(&self) -> Pin<Box<dyn Future<Output = Result<PathBuf, AppError>> + Send + '_>>;
     fn exit(&self, code: i32);
-    /// Emite "launch-step" para o frontend (ex.: patching_client, patching_server, starting). Default: no-op.
+    /// Emits "launch-step" events to the frontend (e.g. patching_client, patching_server, starting).
+    /// Default implementation is a no-op so tests/other hosts don't need to handle it.
     fn emit_launch_step(&self, _step: &str) {}
 }
 
@@ -98,6 +99,7 @@ impl GameService {
         let (auth_mode, identity_token, session_token, final_uuid, final_name) =
             if settings.online_mode {
                 let res = Self::authenticate(
+                    pool,
                     &offline_uuid,
                     &player_name,
                     &settings.auth_domain,
@@ -228,38 +230,45 @@ impl GameService {
         tokens: &crate::player::auth::AuthTokens,
         domain: &str,
     ) -> anyhow::Result<()> {
-        let user_id = tokens
-            .user_id
-            .clone()
-            .unwrap_or_else(|| "00000000-0000-0000-0000-000000000000".to_string());
-
         let config = TokenConfig {
             session_token: tokens.session_token.clone(),
             auth_server_url: format!("https://{}", domain),
             issuer: format!("https://{}", domain),
-            user_id,
+            user_id: tokens.user_id.clone(),
         };
 
         let config_path = client_dir.join("auth_token.json");
         let json = serde_json::to_string_pretty(&config)?;
         std::fs::write(config_path, json)?;
 
-        log::info!("Auth token injected successfully into auth_token.json");
+        log::info!(
+            "Auth token injected for user '{}' (UUID: {})",
+            tokens.name,
+            tokens.user_id
+        );
         Ok(())
     }
 
     async fn authenticate(
+        _pool: &DbPool,
         offline_uuid: &str,
         player_name: &str,
         auth_domain: &str,
         client_dir: &std::path::Path,
     ) -> (String, Option<String>, Option<String>, String, String) {
-        match crate::player::auth::fetch_custom_auth_tokens(player_name, auth_domain).await {
+        // Usamos sempre um UUID persistente (settings.player_id), passado em `offline_uuid`.
+        let persistent_uuid = offline_uuid.to_string();
+
+        // 1) Tenta autenticação customizada Sanasol usando o UUID persistente.
+        match crate::player::auth::fetch_custom_auth_with_uuid(
+            player_name,
+            &persistent_uuid,
+            auth_domain,
+        )
+        .await
+        {
             Ok(tokens) => {
-                let uuid = tokens
-                    .user_id
-                    .clone()
-                    .unwrap_or_else(|| offline_uuid.to_string());
+                let uuid = tokens.user_id.clone();
                 let name = tokens.name.clone();
 
                 if let Err(e) = Self::inject_auth_token(client_dir, &tokens, auth_domain) {
@@ -279,7 +288,10 @@ impl GameService {
             }
         }
 
-        match crate::player::auth::fetch_auth_tokens(offline_uuid, player_name, auth_domain).await {
+        // 2) Fallback para auth legado, ainda usando o mesmo UUID persistente.
+        match crate::player::auth::fetch_auth_tokens(&persistent_uuid, player_name, auth_domain)
+            .await
+        {
             Ok(tokens) => {
                 if let Err(e) = Self::inject_auth_token(client_dir, &tokens, auth_domain) {
                     log::error!("Failed to inject auth token (fallback): {}", e);
@@ -289,7 +301,7 @@ impl GameService {
                     "authenticated".to_string(),
                     Some(tokens.identity_token),
                     Some(tokens.session_token),
-                    offline_uuid.to_string(),
+                    persistent_uuid,
                     tokens.name,
                 )
             }
@@ -302,7 +314,7 @@ impl GameService {
                     "offline".to_string(),
                     None,
                     None,
-                    offline_uuid.to_string(),
+                    persistent_uuid,
                     player_name.to_string(),
                 )
             }

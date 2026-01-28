@@ -45,11 +45,9 @@ Unlike many traditional launchers that use Electron, Hycore is built on **Tauri*
 | **⚡ Native Performance** | Optimized to consume minimal system resources. |
 | **📦 Mod Management** | Install, remove, and update mods intuitively and safely. |
 | **🔄 Multi-Version** | Selection and download of any available Hytale version. |
-| **🌐 True Dual Auth** | Injected official Java patcher supporting both Hytale.com and F2P identities. |
-| **🆔 Identity Sync** | Full name-synchronization between authentication servers and the game client. |
 | **🎮 Profile Control** | Create perfect isolation: "Vanilla", "Magic Mods", "PVP Server". |
 | **💬 Discord RPC** | Show your game status and configuration directly on Discord. |
-| **🌍 Localization** | Full support for multiple languages (PT-BR, EN). |
+| **🌍 Localization** | Full support for multiple languages (EN, PT-BR, ES, RU). |
 
 ## 📸 Gallery
 

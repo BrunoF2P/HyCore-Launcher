@@ -30,7 +30,6 @@ pub fn run() {
             use tauri::tray::TrayIconBuilder;
             use tauri::Manager;
 
-            // Initialize logging
             let _ = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .targets([
@@ -46,7 +45,6 @@ pub fn run() {
 
             log::info!("Launcher starting...");
 
-            // Initialize database
             match database::init_db() {
                 Ok(pool) => {
                     app.manage(pool);
@@ -148,6 +146,8 @@ pub fn run() {
             game::launch_game,
             player::get_player_name_command,
             player::set_player_name_command,
+            player::get_player_uuid_command,
+            player::reset_player_uuid_command,
             updater::java_bin_path_command,
             mods::search_mods_cf,
             mods::get_installed_mods,

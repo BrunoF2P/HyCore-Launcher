@@ -257,6 +257,38 @@ export const SettingsOverlay = ({ onClose }: SettingsOverlayProps) => {
                                 </div>
                             </div>
 
+                            {/* Identity section */}
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl space-y-3">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="space-y-1">
+                                        <span className="font-semibold text-white/90">{t('settings.identity_title')}</span>
+                                        <p className="text-xs text-white/40">
+                                            {t('settings.identity_desc')}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                await invoke('reset_player_uuid_command');
+                                                // Reload settings so the masked UUID updates on next launch/use
+                                                await loadSettings();
+                                            } catch (err) {
+                                                console.error('Failed to reset player identity:', err);
+                                            }
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg border border-red-500/40 text-[10px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                    >
+                                        {t('settings.identity_reset')}
+                                    </button>
+                                </div>
+                                <div className="mt-1 text-xs text-white/60 font-mono break-all">
+                                    {localSettings.player_id
+                                        ? `${localSettings.player_id.substring(0, 8)}-****-****-****-${localSettings.player_id.substring(localSettings.player_id.length - 12)}`
+                                        : t('settings.identity_pending')}
+                                </div>
+                            </div>
+
                         </div>
                     </section>
 
