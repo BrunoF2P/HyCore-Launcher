@@ -65,7 +65,7 @@ pub async fn ensure_java(window: &Window) -> anyhow::Result<PathBuf> {
     let arch = crate::platform::get_java_arch();
 
     let metadata_url = format!(
-        "https://api.adoptium.net/v3/assets/latest/{}/hotspot?architecture={}&image_type=jre&os={}&vendor=eclipse",
+        "https://api.adoptium.net/v3/assets/latest/{}/hotspot?architecture={}&image_type=jdk&os={}&vendor=eclipse",
         JRE_VERSION, arch, os
     );
 

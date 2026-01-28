@@ -1,12 +1,16 @@
 use crate::database::DbPool;
 use crate::error::AppError;
 use std::future::Future;
+use tauri::Emitter;
 use std::path::PathBuf;
 use std::pin::Pin;
 
 pub trait GameHost: Send + Sync {
     fn ensure_java(&self) -> Pin<Box<dyn Future<Output = Result<PathBuf, AppError>> + Send + '_>>;
     fn exit(&self, code: i32);
+    /// Emits "launch-step" events to the frontend (e.g. patching_client, patching_server, starting).
+    /// Default implementation is a no-op so tests/other hosts don't need to handle it.
+    fn emit_launch_step(&self, _step: &str) {}
 }
 
 pub struct TauriGameHost {
@@ -33,6 +37,10 @@ impl GameHost for TauriGameHost {
     fn exit(&self, code: i32) {
         self.app.exit(code);
     }
+
+    fn emit_launch_step(&self, step: &str) {
+        let _ = self.window.emit("launch-step", serde_json::json!({ "step": step }));
+    }
 }
 
 pub struct GameService;
@@ -52,13 +60,9 @@ impl GameService {
             ),
         );
 
-        // 1. Validation
         super::launch::validate_installation(&client_dir).await?;
-
-        // 2. RAM Check
         super::launch::check_ram(&settings)?;
 
-        // 3. Prepare Paths
         let app_dir_str = game_dir
             .to_str()
             .ok_or_else(|| AppError::Unknown("Invalid game directory path".to_string()))?
@@ -72,7 +76,6 @@ impl GameService {
             .await
             .map_err(|e| AppError::DirCreation(e.to_string()))?;
 
-        // 4. Ensure Java
         let java_exec = host.ensure_java().await?;
 
         #[cfg(target_os = "windows")]
@@ -80,33 +83,63 @@ impl GameService {
         #[cfg(not(target_os = "windows"))]
         let executable = client_dir.join("HytaleClient");
 
-        // Online Mode Patching
         if settings.online_mode {
-            Self::handle_online_patches(&settings, &executable, &client_dir).await?;
+            Self::handle_online_patches(host, &settings, &executable, &client_dir, &java_exec).await?;
         }
 
-        // 5. Ensure Permissions (Linux/Unix) - MUST happen after patching
         #[cfg(not(target_os = "windows"))]
         {
             log::info!("Ensuring executable permissions after potential patching...");
             super::launch::ensure_permissions(&executable).await?;
         }
 
-        // 6. Launch
         let player_name = crate::player::get_player_name(pool);
         let offline_uuid = settings.player_id.clone();
 
-        let (auth_mode, identity_token, session_token) = if settings.online_mode {
-            Self::authenticate(&offline_uuid, &player_name, &settings.auth_domain).await
-        } else {
-            ("offline".to_string(), None, None)
-        };
+        let (auth_mode, identity_token, session_token, final_uuid, final_name) =
+            if settings.online_mode {
+                let res = Self::authenticate(
+                    pool,
+                    &offline_uuid,
+                    &player_name,
+                    &settings.auth_domain,
+                    &client_dir,
+                )
+                .await;
+
+                if res.4 != settings.player_name || res.3 != settings.player_id {
+                    log::info!(
+                        "Identity synchronization: {} -> {}, id: {} -> {}",
+                        settings.player_name,
+                        res.4,
+                        settings.player_id,
+                        res.3
+                    );
+
+                    let mut new_settings = settings.clone();
+                    new_settings.player_name = res.4.clone();
+                    new_settings.player_id = res.3.clone();
+
+                    if let Err(e) = crate::settings::save_settings(pool, &new_settings) {
+                        log::error!("Failed to save synchronized identity: {}", e);
+                    }
+                }
+                res
+            } else {
+                (
+                    "offline".to_string(),
+                    None,
+                    None,
+                    offline_uuid.clone(),
+                    player_name,
+                )
+            };
 
         let mut args = super::launch::LaunchArgs {
             app_dir: app_dir_str,
             user_dir: user_dir_str,
-            uuid: offline_uuid,
-            name: player_name,
+            uuid: final_uuid,
+            name: final_name,
             auth_mode,
             identity_token: None,
             session_token: None,
@@ -119,6 +152,7 @@ impl GameService {
 
         let jvm_args = super::launch::construct_jvm_args(&settings);
 
+        host.emit_launch_step("starting");
         super::launch::spawn_game_process(&executable, &java_exec, args, jvm_args, &client_dir)
             .await?;
 
@@ -132,14 +166,17 @@ impl GameService {
         Ok(())
     }
 
-    async fn handle_online_patches(
+    async fn handle_online_patches<H: GameHost>(
+        host: &H,
         settings: &crate::settings::GameSettings,
         executable: &PathBuf,
         client_dir: &PathBuf,
+        java_exec: &PathBuf,
     ) -> Result<(), AppError> {
         log::info!("Online mode enabled, ensuring game is patched...");
         let patcher = super::patcher::ClientPatcher::new(Some(settings.auth_domain.clone()));
 
+        host.emit_launch_step("patching_client");
         let client_result = patcher.patch_client(executable);
         if !client_result.success {
             return Err(AppError::Unknown(format!(
@@ -154,13 +191,12 @@ impl GameService {
             .join("Server")
             .join("HytaleServer.jar");
         if server_jar.exists() {
-            let server_result = patcher.patch_server(&server_jar);
-            if !server_result.success {
-                log::warn!(
-                    "Server patching failed (non-fatal): {}",
-                    server_result.error.unwrap_or_default()
-                );
-            }
+            host.emit_launch_step("patching_server");
+            log::info!("Applying advanced bytecode patching to server...");
+            patcher
+                .run_dual_auth_patcher(java_exec, &server_jar, &server_jar)
+                .await
+                .map_err(|e| AppError::Unknown(format!("Server patching failed: {}", e)))?;
         }
 
         #[cfg(target_os = "macos")]
@@ -175,24 +211,112 @@ impl GameService {
         }
         Ok(())
     }
+}
+
+#[derive(serde::Serialize)]
+struct TokenConfig {
+    #[serde(rename = "sessionToken")]
+    session_token: String,
+    #[serde(rename = "authServerUrl")]
+    auth_server_url: String,
+    issuer: String,
+    #[serde(rename = "userId")]
+    user_id: String,
+}
+
+impl GameService {
+    fn inject_auth_token(
+        client_dir: &std::path::Path,
+        tokens: &crate::player::auth::AuthTokens,
+        domain: &str,
+    ) -> anyhow::Result<()> {
+        let config = TokenConfig {
+            session_token: tokens.session_token.clone(),
+            auth_server_url: format!("https://{}", domain),
+            issuer: format!("https://{}", domain),
+            user_id: tokens.user_id.clone(),
+        };
+
+        let config_path = client_dir.join("auth_token.json");
+        let json = serde_json::to_string_pretty(&config)?;
+        std::fs::write(config_path, json)?;
+
+        log::info!(
+            "Auth token injected for user '{}' (UUID: {})",
+            tokens.name,
+            tokens.user_id
+        );
+        Ok(())
+    }
 
     async fn authenticate(
+        _pool: &DbPool,
         offline_uuid: &str,
         player_name: &str,
         auth_domain: &str,
-    ) -> (String, Option<String>, Option<String>) {
-        match crate::player::auth::fetch_auth_tokens(offline_uuid, player_name, auth_domain).await {
-            Ok(tokens) => (
-                "authenticated".to_string(),
-                Some(tokens.identity_token),
-                Some(tokens.session_token),
-            ),
+        client_dir: &std::path::Path,
+    ) -> (String, Option<String>, Option<String>, String, String) {
+        // Usamos sempre um UUID persistente (settings.player_id), passado em `offline_uuid`.
+        let persistent_uuid = offline_uuid.to_string();
+
+        // 1) Tenta autenticação customizada Sanasol usando o UUID persistente.
+        match crate::player::auth::fetch_custom_auth_with_uuid(
+            player_name,
+            &persistent_uuid,
+            auth_domain,
+        )
+        .await
+        {
+            Ok(tokens) => {
+                let uuid = tokens.user_id.clone();
+                let name = tokens.name.clone();
+
+                if let Err(e) = Self::inject_auth_token(client_dir, &tokens, auth_domain) {
+                    log::error!("Failed to inject auth token: {}", e);
+                }
+
+                return (
+                    "authenticated".to_string(),
+                    Some(tokens.identity_token),
+                    Some(tokens.session_token),
+                    uuid,
+                    name,
+                );
+            }
+            Err(e) => {
+                log::info!("Custom auth failed ({}), trying legacy Hytale auth...", e);
+            }
+        }
+
+        // 2) Fallback para auth legado, ainda usando o mesmo UUID persistente.
+        match crate::player::auth::fetch_auth_tokens(&persistent_uuid, player_name, auth_domain)
+            .await
+        {
+            Ok(tokens) => {
+                if let Err(e) = Self::inject_auth_token(client_dir, &tokens, auth_domain) {
+                    log::error!("Failed to inject auth token (fallback): {}", e);
+                }
+
+                (
+                    "authenticated".to_string(),
+                    Some(tokens.identity_token),
+                    Some(tokens.session_token),
+                    persistent_uuid,
+                    tokens.name,
+                )
+            }
             Err(e) => {
                 log::warn!(
                     "Failed to fetch online tokens, falling back to offline: {}",
                     e
                 );
-                ("offline".to_string(), None, None)
+                (
+                    "offline".to_string(),
+                    None,
+                    None,
+                    persistent_uuid,
+                    player_name.to_string(),
+                )
             }
         }
     }

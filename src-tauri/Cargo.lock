@@ -1783,11 +1783,12 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "hycore"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bincode",
+ "byteorder",
  "dirs",
  "discord-rich-presence",
  "flate2",
@@ -1797,6 +1798,7 @@ dependencies = [
  "mimalloc",
  "once_cell",
  "redb",
+ "regex",
  "reqwest 0.13.1",
  "serde",
  "serde_json",

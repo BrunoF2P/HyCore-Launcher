@@ -26,6 +26,19 @@ pub fn set_player_name(pool: &DbPool, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns the persistent player UUID used for online identity and cosmetics.
+pub fn get_player_uuid(pool: &DbPool) -> String {
+    load_settings(pool).player_id
+}
+
+/// Resets the persistent player UUID. The next settings load will generate a new one.
+pub fn reset_player_uuid(pool: &DbPool) -> anyhow::Result<()> {
+    let mut settings = load_settings(pool);
+    settings.player_id.clear();
+    save_settings(pool, &settings)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_player_name_command(db_pool: tauri::State<DbPool>) -> String {
     let name = get_player_name(&db_pool);
@@ -46,4 +59,24 @@ pub fn set_player_name_command(db_pool: tauri::State<DbPool>, name: String) -> R
             Err(e)
         }
     }
+}
+
+#[tauri::command]
+pub fn get_player_uuid_command(db_pool: tauri::State<DbPool>) -> Result<String, String> {
+    let uuid = get_player_uuid(&db_pool);
+    if uuid.is_empty() {
+        Err("Player UUID is not initialized yet".to_string())
+    } else {
+        log::info!("Player UUID requested (from DB): {}", uuid);
+        Ok(uuid)
+    }
+}
+
+#[tauri::command]
+pub fn reset_player_uuid_command(db_pool: tauri::State<DbPool>) -> Result<(), String> {
+    log::warn!("Player UUID reset requested");
+    reset_player_uuid(&db_pool).map_err(|e| {
+        log::error!("Failed to reset player UUID: {}", e);
+        e.to_string()
+    })
 }

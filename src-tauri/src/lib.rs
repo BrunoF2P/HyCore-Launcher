@@ -10,20 +10,26 @@ pub mod settings;
 pub mod social;
 mod system;
 mod updater;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+static APP_HANDLE: once_cell::sync::OnceCell<tauri::AppHandle> = once_cell::sync::OnceCell::new();
+
+pub fn get_app_handle() -> &'static tauri::AppHandle {
+    APP_HANDLE.get().expect("App handle not initialized")
+}
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use tauri::Manager;
     tauri::Builder::default()
         .setup(|app| {
+            APP_HANDLE.set(app.handle().clone()).unwrap();
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::TrayIconBuilder;
+            use tauri::Manager;
 
-            // Initialize logging
             let _ = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .targets([
@@ -39,7 +45,6 @@ pub fn run() {
 
             log::info!("Launcher starting...");
 
-            // Initialize database
             match database::init_db() {
                 Ok(pool) => {
                     app.manage(pool);
@@ -141,6 +146,8 @@ pub fn run() {
             game::launch_game,
             player::get_player_name_command,
             player::set_player_name_command,
+            player::get_player_uuid_command,
+            player::reset_player_uuid_command,
             updater::java_bin_path_command,
             mods::search_mods_cf,
             mods::get_installed_mods,

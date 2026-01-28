@@ -42,10 +42,15 @@
         "language_en": "Inglês",
         "language_pt": "Português",
         "language_es": "Espanhol",
+        "language_ru": "Russo",
         "advanced_on": "Modo Avançado: Ligado",
         "advanced_off": "Modo Avançado: Desligado",
         "advanced_hint": "Habilite o Modo Avançado para ajustar a alocação de RAM e argumentos da JVM.",
-        "save_changes": "Salvar Alterações"
+        "save_changes": "Salvar Alterações",
+        "identity_title": "Identidade do Jogador",
+        "identity_desc": "UUID persistente usado para autenticação online e cosméticos. Mantê-lo estável garante o mesmo personagem entre sessões.",
+        "identity_pending": "A identidade será gerada no próximo lançamento.",
+        "identity_reset": "Redefinir Identidade"
     },
     "mods": {
         "title": "Mods",
@@ -105,6 +110,14 @@
         "update": "Atualizar Jogo",
         "launch_error": "Erro ao iniciar o jogo"
     },
+    "launch": {
+        "steps": {
+            "launching": "Preparando...",
+            "patching_client": "Aplicando patch no cliente...",
+            "patching_server": "Aplicando patch no servidor...",
+            "starting": "Iniciando jogo..."
+        }
+    },
     "update": {
         "title": "Atualizando Hytale",
         "preparing": "Preparando verificação...",
@@ -117,7 +130,7 @@
             "checking": "Verificando Requisitos",
             "butler": "Preparando Ferramentas",
             "download": "Baixando Patch",
-            "install": "Aplicando Atualização",
+            "install": "Aplicando patch (pode levar alguns minutos)...",
             "done": "Pronto para Iniciar"
         }
     },

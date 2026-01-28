@@ -8,6 +8,7 @@ import { VersionSelector } from "./VersionSelector";
 export const LaunchSection = () => {
     const { t } = useTranslation();
     const buttonState = useGameStore(state => state.buttonState);
+    const launchStep = useGameStore(state => state.launchStep);
     const launchGame = useGameStore(state => state.launchGame);
     const checkForUpdates = useGameStore(state => state.checkForUpdates);
     const setButtonState = useGameStore(state => state.setButtonState);
@@ -68,7 +69,7 @@ export const LaunchSection = () => {
                 return (
                     <div className="flex items-center gap-2">
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>{t('footer.launching')}</span>
+                        <span>{t(`launch.steps.${launchStep || 'launching'}`)}</span>
                     </div>
                 );
             case 'ready':

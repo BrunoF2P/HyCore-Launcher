@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import i18next from '../../../i18n';
 
 type ButtonState = 'idle' | 'checking' | 'ready' | 'update_available' | 'updating' | 'launching';
 
 interface GameState {
     buttonState: ButtonState;
+    launchStep: string | null;
     updateAvailable: boolean;
     latestVersion: number;
     availableVersions: number[];
@@ -22,8 +24,14 @@ interface GameState {
     clearError: () => void;
 }
 
-export const useGameStore = create<GameState>((set, get) => ({
+export const useGameStore = create<GameState>((set, get) => {
+    listen<{ step?: string }>('launch-step', (e) => {
+        set({ launchStep: e.payload?.step ?? (typeof e.payload === 'string' ? e.payload : null) });
+    }).then(() => {});
+
+    return {
     buttonState: 'idle',
+    launchStep: null,
     updateAvailable: false,
     latestVersion: 0,
     availableVersions: [],
@@ -98,7 +106,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     launchGame: async () => {
-        set({ buttonState: 'launching', lastError: null });
+        set({ buttonState: 'launching', launchStep: null, lastError: null });
 
         try {
             await invoke('launch_game');
@@ -125,6 +133,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             } else {
                 set({ buttonState: 'ready' });
             }
+        } finally {
+            set({ launchStep: null });
         }
-    },
-}));
+        },
+    };
+});
