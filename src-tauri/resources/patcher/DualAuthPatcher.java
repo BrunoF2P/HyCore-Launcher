@@ -9,7 +9,7 @@ import java.util.jar.*;
 import java.util.zip.*;
 
 /**
- * Hytale Server Dual Authentication Patcher v8.0
+ * Hytale Server Dual Authentication Patcher v9.0
  *
  * TRUE DUAL AUTH: Supports BOTH official hytale.com AND F2P tokens
  *
@@ -19,6 +19,7 @@ import java.util.zip.*;
  * 3. Patches issuer validation to accept BOTH hytale.com AND F2P issuers
  * 4. Injects DualAuthContext for per-request routing of authorization requests
  * 5. Patches SessionServiceClient.refreshSessionAsync() for issuer-based routing (v8.0)
+ * 6. Updated for Jan 2026 server: uses lastJwksRefresh (Instant) instead of jwksCacheExpiry (v9.0)
  *
  * Flow:
  *   Token arrives -> Signature verified against merged JWKS (both backends' keys)
@@ -114,7 +115,7 @@ public class DualAuthPatcher {
         String outputJar = args.length > 1 ? args[1] : inputJar;
 
         System.out.println("+---------------------------------------------------------------+");
-        System.out.println("|     Hytale Server TRUE Dual Authentication Patcher v7.0       |");
+        System.out.println("|     Hytale Server TRUE Dual Authentication Patcher v9.0       |");
         System.out.println("+---------------------------------------------------------------+");
         System.out.println();
         System.out.println("Input:  " + inputJar);
@@ -234,11 +235,25 @@ public class DualAuthPatcher {
             addClassToJar(zipOut, SERVER_IDENTITY_CLASS + ".class", serverIdentityBytes);
             addClassToJar(zipOut, TOKEN_MANAGER_CLASS + ".class", tokenManagerBytes);
 
-            // Copy all entries, replacing patched ones
+            // Set of generated class paths to skip when copying (in case JAR was already patched)
+            Set<String> generatedClasses = new HashSet<>();
+            generatedClasses.add(CONTEXT_CLASS + ".class");
+            generatedClasses.add(HELPER_CLASS + ".class");
+            generatedClasses.add(JWKS_FETCHER_CLASS + ".class");
+            generatedClasses.add(SERVER_IDENTITY_CLASS + ".class");
+            generatedClasses.add(TOKEN_MANAGER_CLASS + ".class");
+
+            // Copy all entries, replacing patched ones and skipping generated ones
             Enumeration<? extends ZipEntry> entries = zipIn.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 String name = entry.getName();
+
+                // Skip if this is a generated class (we already added fresh versions)
+                if (generatedClasses.contains(name)) {
+                    System.out.println("[SKIP] Already added fresh version: " + name);
+                    continue;
+                }
 
                 ZipEntry newEntry = new ZipEntry(name);
                 zipOut.putNextEntry(newEntry);
@@ -2695,13 +2710,11 @@ public class DualAuthPatcher {
         code.add(new VarInsnNode(Opcodes.ALOAD, 4)); // newSet
         code.add(new FieldInsnNode(Opcodes.PUTFIELD, JWT_VALIDATOR_CLASS, "cachedJwkSet", "Lcom/nimbusds/jose/jwk/JWKSet;"));
 
-        // this.jwksCacheExpiry = System.currentTimeMillis() + this.jwksCacheDurationMs;
+        // this.lastJwksRefresh = Instant.now();
+        // Note: Field changed from jwksCacheExpiry (long) to lastJwksRefresh (Instant) in newer versions
         code.add(new VarInsnNode(Opcodes.ALOAD, 0)); // this
-        code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "currentTimeMillis", "()J", false));
-        code.add(new VarInsnNode(Opcodes.ALOAD, 0)); // this
-        code.add(new FieldInsnNode(Opcodes.GETFIELD, JWT_VALIDATOR_CLASS, "jwksCacheDurationMs", "J"));
-        code.add(new InsnNode(Opcodes.LADD));
-        code.add(new FieldInsnNode(Opcodes.PUTFIELD, JWT_VALIDATOR_CLASS, "jwksCacheExpiry", "J"));
+        code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/time/Instant", "now", "()Ljava/time/Instant;", false));
+        code.add(new FieldInsnNode(Opcodes.PUTFIELD, JWT_VALIDATOR_CLASS, "lastJwksRefresh", "Ljava/time/Instant;"));
 
         // Log final success
         code.add(new FieldInsnNode(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;"));

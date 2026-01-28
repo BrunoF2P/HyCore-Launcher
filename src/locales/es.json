@@ -105,6 +105,14 @@
         "update": "Actualizar Juego",
         "launch_error": "Error al iniciar el juego"
     },
+    "launch": {
+        "steps": {
+            "launching": "Preparando...",
+            "patching_client": "Aplicando parche al cliente...",
+            "patching_server": "Aplicando parche al servidor...",
+            "starting": "Iniciando juego..."
+        }
+    },
     "update": {
         "title": "Actualizando Hytale",
         "preparing": "Preparando verificación...",
@@ -117,7 +125,7 @@
             "checking": "Verificando Requisitos",
             "butler": "Preparando Herramientas",
             "download": "Descargando Parche",
-            "install": "Aplicando Actualización",
+            "install": "Aplicando parche (puede tardar unos minutos)...",
             "done": "Listo para Iniciar"
         }
     },

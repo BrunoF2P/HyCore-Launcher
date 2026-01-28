@@ -47,10 +47,14 @@ export const UpdateOverlay: React.FC = () => {
 
                 {status.stage !== 'done' && status.stage !== 'error' && (
                     <div className="w-full h-1 bg-hyzinc-800 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-300 ease-out"
-                            style={{ width: `${status.progress}%` }}
-                        />
+                        {status.stage === 'install' ? (
+                            <div className="h-full w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 animate-pulse rounded-full" />
+                        ) : (
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-300 ease-out"
+                                style={{ width: `${status.progress}%` }}
+                            />
+                        )}
                     </div>
                 )}
 

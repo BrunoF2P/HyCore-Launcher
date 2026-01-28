@@ -49,7 +49,7 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "resources": [
-      "resources/patcher/*"
+      "resources/patcher/"
     ],
     "targets": [
       "deb",

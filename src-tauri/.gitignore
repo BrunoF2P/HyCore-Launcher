@@ -8,4 +8,3 @@
 
 # Java build artifacts
 **/*.class
-/resources/patcher/lib/

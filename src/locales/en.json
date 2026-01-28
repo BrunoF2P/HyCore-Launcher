@@ -105,6 +105,14 @@
         "update": "Update Game",
         "launch_error": "Failed to launch game"
     },
+    "launch": {
+        "steps": {
+            "launching": "Preparing...",
+            "patching_client": "Patching client...",
+            "patching_server": "Patching server...",
+            "starting": "Starting game..."
+        }
+    },
     "update": {
         "title": "Updating Hytale",
         "preparing": "Preparing system check...",
@@ -117,7 +125,7 @@
             "checking": "Checking Requirements",
             "butler": "Preparing Tools",
             "download": "Downloading Patch",
-            "install": "Applying Update",
+            "install": "Applying patch (this may take a few minutes)...",
             "done": "Update Ready"
         }
     },

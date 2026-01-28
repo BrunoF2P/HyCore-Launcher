@@ -1,12 +1,15 @@
 use crate::database::DbPool;
 use crate::error::AppError;
 use std::future::Future;
+use tauri::Emitter;
 use std::path::PathBuf;
 use std::pin::Pin;
 
 pub trait GameHost: Send + Sync {
     fn ensure_java(&self) -> Pin<Box<dyn Future<Output = Result<PathBuf, AppError>> + Send + '_>>;
     fn exit(&self, code: i32);
+    /// Emite "launch-step" para o frontend (ex.: patching_client, patching_server, starting). Default: no-op.
+    fn emit_launch_step(&self, _step: &str) {}
 }
 
 pub struct TauriGameHost {
@@ -32,6 +35,10 @@ impl GameHost for TauriGameHost {
 
     fn exit(&self, code: i32) {
         self.app.exit(code);
+    }
+
+    fn emit_launch_step(&self, step: &str) {
+        let _ = self.window.emit("launch-step", serde_json::json!({ "step": step }));
     }
 }
 
@@ -76,7 +83,7 @@ impl GameService {
         let executable = client_dir.join("HytaleClient");
 
         if settings.online_mode {
-            Self::handle_online_patches(&settings, &executable, &client_dir, &java_exec).await?;
+            Self::handle_online_patches(host, &settings, &executable, &client_dir, &java_exec).await?;
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -143,6 +150,7 @@ impl GameService {
 
         let jvm_args = super::launch::construct_jvm_args(&settings);
 
+        host.emit_launch_step("starting");
         super::launch::spawn_game_process(&executable, &java_exec, args, jvm_args, &client_dir)
             .await?;
 
@@ -156,7 +164,8 @@ impl GameService {
         Ok(())
     }
 
-    async fn handle_online_patches(
+    async fn handle_online_patches<H: GameHost>(
+        host: &H,
         settings: &crate::settings::GameSettings,
         executable: &PathBuf,
         client_dir: &PathBuf,
@@ -165,6 +174,7 @@ impl GameService {
         log::info!("Online mode enabled, ensuring game is patched...");
         let patcher = super::patcher::ClientPatcher::new(Some(settings.auth_domain.clone()));
 
+        host.emit_launch_step("patching_client");
         let client_result = patcher.patch_client(executable);
         if !client_result.success {
             return Err(AppError::Unknown(format!(
@@ -179,6 +189,7 @@ impl GameService {
             .join("Server")
             .join("HytaleServer.jar");
         if server_jar.exists() {
+            host.emit_launch_step("patching_server");
             log::info!("Applying advanced bytecode patching to server...");
             patcher
                 .run_dual_auth_patcher(java_exec, &server_jar, &server_jar)

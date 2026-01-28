@@ -4,8 +4,36 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+
+/// ASM 9.7 JARs (DualAuthPatcher). Garante em `patcher_lib` em hycore data.
+async fn ensure_asm_libs() -> anyhow::Result<PathBuf> {
+    const ASM_9_7: &[(&str, &str)] = &[
+        ("asm-9.7.jar", "https://repo1.maven.org/maven2/org/ow2/asm/asm/9.7/asm-9.7.jar"),
+        ("asm-tree-9.7.jar", "https://repo1.maven.org/maven2/org/ow2/asm/asm-tree/9.7/asm-tree-9.7.jar"),
+        ("asm-util-9.7.jar", "https://repo1.maven.org/maven2/org/ow2/asm/asm-util/9.7/asm-util-9.7.jar"),
+        ("asm-commons-9.7.jar", "https://repo1.maven.org/maven2/org/ow2/asm/asm-commons/9.7/asm-commons-9.7.jar"),
+    ];
+    let lib = crate::updater::env::get_hycore_data_dir().join("patcher_lib");
+    let _ = fs::create_dir_all(&lib);
+    for (name, url) in ASM_9_7 {
+        let p = lib.join(name);
+        if !p.exists() {
+            log::info!("Downloading {} for DualAuthPatcher...", name);
+            let bytes = crate::http::HTTP_CLIENT
+                .get(*url)
+                .send()
+                .await?
+                .error_for_status()?
+                .bytes()
+                .await?;
+            tokio::fs::write(&p, &bytes).await?;
+        }
+    }
+    Ok(lib)
+}
 
 /// Redacts output that may contain a JWT (tokens start with "eyJ" in base64). Never log tokens.
 fn redact_jwt_if_present(s: &str) -> Cow<'_, str> {
@@ -77,28 +105,55 @@ impl ClientPatcher {
         }
     }
 
+    #[cfg(test)]
+    /// Constrói um patcher com o domínio dado, sem validação. Apenas para testes.
+    pub fn new_for_test(domain: &str) -> Self {
+        Self {
+            target_domain: domain.to_string(),
+        }
+    }
+
+    /// Domain strategy: main_domain must fit in "hytale.com" (9 chars), and
+    /// "https://" + subdomain_prefix must fit in "https://tools." (15 chars) → prefix ≤ 7.
+    ///
+    /// | len  | prefix | main  | supports |
+    /// |------|--------|-------|----------|
+    /// | 4–9  | 0      | all   | Direct   |
+    /// | 10   | 1      | 9     | Split    |
+    /// | 11–15| 6      | 5–9   | Split    |
+    /// | 16   | 7      | 9     | Split    |
     pub fn get_domain_strategy(&self) -> DomainStrategy {
         let target = &self.target_domain;
-        let suffix_len = 10.min(target.len());
-        let main_domain = target[target.len() - suffix_len..].to_string();
-        let subdomain_prefix = target[..target.len() - suffix_len].to_string();
+        let len = target.len();
 
-        if !subdomain_prefix.is_empty() {
+        if len <= 9 {
+            DomainStrategy {
+                mode: PatchMode::Direct,
+                main_domain: target.clone(),
+                subdomain_prefix: String::new(),
+                description: format!("Direct: \"{}\" ({} chars)", target, len),
+            }
+        } else {
+            let prefix_len = match len {
+                10 => 1,
+                16 => 7,
+                11..=15 => 6,
+                _ => 6,
+            };
+            let subdomain_prefix = target[..prefix_len].to_string();
+            let main_domain = target[prefix_len..].to_string();
+
             DomainStrategy {
                 mode: PatchMode::Split,
                 main_domain: main_domain.clone(),
                 subdomain_prefix: subdomain_prefix.clone(),
                 description: format!(
-                    "Universal Split: prefix=\"{}\", main=\"{}\"",
-                    subdomain_prefix, main_domain
+                    "Split: prefix=\"{}\" ({}), main=\"{}\" ({})",
+                    subdomain_prefix,
+                    prefix_len,
+                    main_domain,
+                    main_domain.len()
                 ),
-            }
-        } else {
-            DomainStrategy {
-                mode: PatchMode::Direct,
-                main_domain: target.clone(),
-                subdomain_prefix: String::new(),
-                description: format!("Direct: \"{}\"", target),
             }
         }
     }
@@ -268,9 +323,19 @@ impl ClientPatcher {
         bytes
     }
 
+    /// Legacy UTF-16 replace. Only safe when target_domain.len() <= 9 (ORIGINAL_DOMAIN length);
+    /// otherwise would write past the slot. For 10–16 chars the length-prefixed path must be used.
     pub fn find_and_replace_domain_smart(&self, data: &mut [u8]) -> usize {
-        let mut count = 0;
+        if self.target_domain.len() > ORIGINAL_DOMAIN.len() {
+            log::debug!(
+                "Legacy smart replace skipped: target domain {} chars > {}",
+                self.target_domain.len(),
+                ORIGINAL_DOMAIN.len()
+            );
+            return 0;
+        }
 
+        let mut count = 0;
         let old_no_last = Self::to_utf16le(&ORIGINAL_DOMAIN[..ORIGINAL_DOMAIN.len() - 1]);
         let new_no_last = Self::to_utf16le(&self.target_domain[..self.target_domain.len() - 1]);
 
@@ -561,17 +626,30 @@ impl ClientPatcher {
             return Ok(());
         }
 
-        let mut resource_dir = env::current_dir()?;
+        let asm_path = ensure_asm_libs().await?;
+        let cp_sep = if cfg!(windows) { ";" } else { ":" };
+        let javac_cp = format!("{}/*", asm_path.display());
+        let java_cp = format!(".{}{}/*", cp_sep, asm_path.display());
 
-        if !resource_dir.ends_with("src-tauri") && resource_dir.join("src-tauri").exists() {
-            resource_dir = resource_dir.join("src-tauri");
-        }
+        let resource_dir: Option<PathBuf> = crate::get_app_handle()
+            .path()
+            .resolve("resources/patcher/DualAuthPatcher.java", tauri::path::BaseDirectory::Resource)
+            .ok()
+            .and_then(|p: PathBuf| p.parent().map(PathBuf::from))
+            .filter(|d: &PathBuf| d.join("DualAuthPatcher.java").exists());
 
-        resource_dir = resource_dir.join("resources").join("patcher");
-        log::info!(
-            "Using server patcher resource directory: {:?}",
-            resource_dir
-        );
+        let resource_dir = if let Some(d) = resource_dir {
+            log::info!("Using bundled patcher resource directory: {:?}", d);
+            d
+        } else {
+            let mut d = env::current_dir()?;
+            if !d.ends_with("src-tauri") && d.join("src-tauri").exists() {
+                d = d.join("src-tauri");
+            }
+            let d = d.join("resources").join("patcher");
+            log::info!("Using dev patcher resource directory: {:?}", d);
+            d
+        };
 
         let patcher_java = resource_dir.join("DualAuthPatcher.java");
 
@@ -595,7 +673,7 @@ impl ClientPatcher {
             log::info!("Compiling DualAuthPatcher.java using {:?}...", javac_exec);
             let mut child = Command::new(&javac_exec)
                 .arg("-cp")
-                .arg("lib/*")
+                .arg(&javac_cp)
                 .arg("DualAuthPatcher.java")
                 .current_dir(&resource_dir)
                 .stderr(Stdio::piped())
@@ -638,7 +716,7 @@ impl ClientPatcher {
         log::info!("Running DualAuthPatcher against {:?}", server_jar);
         let mut child = Command::new(java_exec)
             .arg("-cp")
-            .arg(".:lib/*")
+            .arg(&java_cp)
             .arg("DualAuthPatcher")
             .arg(server_jar)
             .env("HYTALE_AUTH_DOMAIN", &self.target_domain)
@@ -722,5 +800,148 @@ impl ClientPatcher {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClientPatcher, DomainStrategy, PatchMode, ORIGINAL_DOMAIN};
+
+    const MAIN_DOMAIN_MAX: usize = 9; // "hytale.com".len()
+    const REPLACEMENT_PREFIX_MAX: usize = 15; // "https://tools.".len()
+    const HTTPS_LEN: usize = 8; // "https://".len()
+
+    fn patcher(domain: &str) -> ClientPatcher {
+        ClientPatcher::new_for_test(domain)
+    }
+
+    fn strategy(domain: &str) -> DomainStrategy {
+        patcher(domain).get_domain_strategy()
+    }
+
+    /// Garante que main_domain cabe no slot "hytale.com" (9 chars).
+    #[test]
+    fn main_domain_fits_in_hytale_com_slot() {
+        for len in 4..=16 {
+            let domain = "a".repeat(len);
+            let s = strategy(&domain);
+            assert!(
+                s.main_domain.len() <= MAIN_DOMAIN_MAX,
+                "len={}: main_domain \"{}\" has {} chars, max {}",
+                len,
+                s.main_domain,
+                s.main_domain.len(),
+                MAIN_DOMAIN_MAX
+            );
+        }
+    }
+
+    /// Garante que "https://" + subdomain_prefix cabe em "https://tools." (15 chars).
+    #[test]
+    fn replacement_prefix_fits_in_shortest_slot() {
+        for len in 4..=16 {
+            let domain = "a".repeat(len);
+            let s = strategy(&domain);
+            let pref = HTTPS_LEN + s.subdomain_prefix.len();
+            assert!(
+                pref <= REPLACEMENT_PREFIX_MAX,
+                "len={}: \"https://\" + prefix \"{}\" = {} chars, max {}",
+                len,
+                s.subdomain_prefix,
+                pref,
+                REPLACEMENT_PREFIX_MAX
+            );
+        }
+    }
+
+    /// prefix + main == domain.
+    #[test]
+    fn prefix_plus_main_equals_domain() {
+        for len in 4..=16 {
+            let domain = "a".repeat(len);
+            let s = strategy(&domain);
+            let rebuilt = format!("{}{}", s.subdomain_prefix, s.main_domain);
+            assert_eq!(rebuilt, domain, "len={}: prefix + main != domain", len);
+        }
+    }
+
+    /// 4–9: Direct, subdomain_prefix vazia, main_domain == domain.
+    #[test]
+    fn direct_mode_4_to_9() {
+        for len in 4..=9 {
+            let domain = "x".repeat(len);
+            let s = strategy(&domain);
+            assert_eq!(s.mode, PatchMode::Direct, "len={}", len);
+            assert!(s.subdomain_prefix.is_empty(), "len={}", len);
+            assert_eq!(s.main_domain, domain, "len={}", len);
+        }
+    }
+
+    /// 10: Split, prefix 1, main 9.
+    #[test]
+    fn split_mode_10_chars() {
+        let domain = "abcdefghij";
+        let s = strategy(domain);
+        assert_eq!(s.mode, PatchMode::Split);
+        assert_eq!(s.subdomain_prefix, "a");
+        assert_eq!(s.main_domain, "bcdefghij");
+        assert_eq!(s.main_domain.len(), 9);
+    }
+
+    /// 11–15: Split, prefix 6, main 5–9.
+    #[test]
+    fn split_mode_11_to_15() {
+        for len in 11..=15 {
+            let domain = "a".repeat(len);
+            let s = strategy(&domain);
+            assert_eq!(s.mode, PatchMode::Split, "len={}", len);
+            assert_eq!(s.subdomain_prefix.len(), 6, "len={}", len);
+            assert_eq!(s.main_domain.len(), len - 6, "len={}", len);
+        }
+    }
+
+    /// 16: Split, prefix 7, main 9.
+    #[test]
+    fn split_mode_16_chars() {
+        let domain = "auth.sanasol.wsx";
+        assert_eq!(domain.len(), 16);
+
+        let s = strategy(domain);
+        assert_eq!(s.mode, PatchMode::Split);
+        assert_eq!(s.subdomain_prefix, "auth.sa");
+        assert_eq!(s.main_domain, "nasol.wsx");
+        assert_eq!(s.subdomain_prefix.len(), 7);
+        assert_eq!(s.main_domain.len(), 9);
+
+        let rebuilt = format!("{}{}", s.subdomain_prefix, s.main_domain);
+        assert_eq!(rebuilt, domain);
+    }
+
+    /// Exemplo 16 chars: prefix 7, main 9, tudo dentro dos limites do binário.
+    #[test]
+    fn real_domain_16_fits_binary_slots() {
+        let s = strategy("auth.sanasol.wsx");
+        assert_eq!(s.subdomain_prefix, "auth.sa");
+        assert_eq!(s.main_domain, "nasol.wsx");
+        assert!(s.main_domain.len() <= ORIGINAL_DOMAIN.len());
+        assert!(HTTPS_LEN + s.subdomain_prefix.len() <= REPLACEMENT_PREFIX_MAX);
+    }
+
+    /// Exemplo 15 chars (auth.sanasol.ws): prefix 6, main 9.
+    #[test]
+    fn real_domain_15_auth_sanasol_ws() {
+        let s = strategy("auth.sanasol.ws");
+        assert_eq!(s.subdomain_prefix, "auth.s");
+        assert_eq!(s.main_domain, "anasol.ws");
+        assert_eq!(s.main_domain.len(), 9);
+    }
+
+    /// Exemplo: sanasol.ws (10) → prefix 1, main 9.
+    #[test]
+    fn real_domain_10_sanasol_ws() {
+        let s = strategy("sanasol.ws");
+        assert_eq!(s.mode, PatchMode::Split);
+        assert_eq!(s.subdomain_prefix, "s");
+        assert_eq!(s.main_domain, "anasol.ws");
     }
 }
